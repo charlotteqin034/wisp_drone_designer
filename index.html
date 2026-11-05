@@ -1,0 +1,1738 @@
+<title>Formation Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen editor. Storyboard left, 3D stage centre, inspector right, timeline across the bottom. Single dark look by choice (light-show work happens in the dark). */
+:root {
+  color-scheme: dark;
+  --bg: #0c1018;
+  --stage: #080b11;
+  --panel: #131925;
+  --panel-2: #1a2231;
+  --line: #263145;
+  --text: #e2e7f0;
+  --muted: #8592a7;
+  --accent: #a596ff;
+  --accent-ink: #120d2b;
+  --ok: #5fcf93;
+  --warn: #f0b54a;
+  --danger: #ff6b72;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 6px;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: 13px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 10px; box-sizing: border-box; overflow: hidden;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+.app {
+  height: 100%; display: grid; gap: 8px;
+  grid-template-columns: 250px minmax(0, 1fr) 290px;
+  grid-template-rows: auto minmax(0, 1fr) 206px;
+  grid-template-areas: "top top top" "story view insp" "time time time";
+}
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.scroll { overflow: auto; min-height: 0; flex: 1; }
+
+/* Top bar */
+.top { grid-area: top; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; }
+.brand b { font-weight: 600; font-size: 15px; letter-spacing: .01em; }
+.brand input { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 3px 6px; color: var(--muted); width: 180px; }
+.brand input:hover, .brand input:focus { border-color: var(--line); color: var(--text); }
+.btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 11px; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { border-color: #3a4862; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.small { padding: 3px 8px; font-size: 12px; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); border-color: var(--line); }
+.btn:disabled { opacity: .4; cursor: default; }
+.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; border: 1px solid var(--line); background: var(--panel); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.pill.ok .dot { background: var(--ok); } .pill.bad .dot { background: var(--danger); }
+
+.savestate { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.savestate::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.savestate[data-state="saved"]::before { background: var(--ok); } .savestate[data-state="saving"]::before { background: var(--accent); }
+.savestate[data-state="error"] { color: var(--warn); } .savestate[data-state="error"]::before { background: var(--warn); }
+/* Motion */
+.mcard { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 9px; display: flex; flex-direction: column; gap: 8px; }
+.mcard header { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
+.mcard .note { font-size: 11px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 11px; font-family: var(--font-data); }
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.kd { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: #0c1018; border: 1.5px solid #0c1018; transform: rotate(45deg); cursor: pointer; z-index: 2; box-shadow: 0 0 0 1px rgba(255,255,255,.7); }
+.kd:hover { background: #fff; }
+.mflag { opacity: .75; margin-left: 4px; }
+
+/* Storyboard */
+.story { grid-area: story; }
+.sb-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.sb-item { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 5px; border: 1px solid transparent; cursor: pointer; }
+.sb-item:hover { background: var(--panel-2); }
+.sb-item.sel { background: var(--panel-2); border-color: var(--accent); }
+.sb-item.fixed { cursor: default; color: var(--muted); }
+.sb-item .sw { width: 12px; height: 12px; border-radius: 3px; }
+.sb-item .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-item .tm { color: var(--muted); font-size: 11px; }
+.sb-item .warnmark { color: var(--danger); font-size: 11px; margin-left: 4px; }
+.sb-gap { font-size: 11px; color: var(--muted); padding: 1px 8px 1px 31px; }
+.sb-gap.short { color: var(--danger); }
+.sb-actions { display: flex; gap: 4px; padding: 8px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+
+/* Shape picker */
+.picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+.shape-tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 6px 4px 5px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); }
+.shape-tile:hover { border-color: var(--accent); color: var(--text); }
+.shape-tile svg { width: 44px; height: 34px; }
+
+/* Stage */
+.view { grid-area: view; position: relative; overflow: hidden; background: var(--stage); }
+.view canvas { display: block; width: 100%; height: 100%; }
+.hud { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
+.hud span { background: rgba(12,16,24,.82); border: 1px solid var(--line); border-radius: 4px; padding: 3px 7px; font-size: 11px; color: var(--muted); }
+.hud b { color: var(--text); font-weight: 500; }
+.hud .bad b { color: var(--danger); }
+.viewbtns { position: absolute; right: 10px; top: 10px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+#numsBtn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; font-size: 11px; white-space: nowrap; }
+
+/* Inspector */
+.insp { grid-area: insp; scroll-margin-top: 10px; }
+.insp.flash { animation: flash 1.1s ease-out; }
+@keyframes flash { 0% { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(255,107,114,.45); } 100% { border-color: var(--line); box-shadow: 0 0 0 0 rgba(255,107,114,0); } }
+#safetyPill { cursor: pointer; }
+#safetyPill:hover { border-color: #3a4862; }
+.tabs { display: flex; gap: 2px; }
+.tab { background: transparent; border: 0; padding: 4px 9px; border-radius: 4px; color: var(--muted); }
+.tab[aria-selected="true"] { background: var(--panel-2); color: var(--text); }
+.form { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > label, .field > .lbl { font-size: 11px; color: var(--muted); }
+.row { display: grid; gap: 6px; }
+.row.c2 { grid-template-columns: 1fr 1fr; } .row.c3 { grid-template-columns: 1fr 1fr 1fr; }
+.inp { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px 7px; width: 100%; min-width: 0; }
+.inp:focus { border-color: var(--accent); outline: none; }
+.unit { position: relative; }
+.unit .inp { padding-right: 22px; }
+.unit i { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); font-size: 11px; pointer-events: none; }
+.unit .ax { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); font-size: 11px; }
+.unit.axis .inp { padding-left: 18px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px; }
+.seg button { background: transparent; border: 0; border-radius: 3px; padding: 4px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--text); }
+.seg button:disabled { opacity: .4; cursor: default; }
+input[type=color].inp { padding: 2px; height: 30px; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; display: flex; gap: 7px; }
+.note .dot { margin-top: 5px; }
+.note.ok .dot { background: var(--ok); } .note.bad .dot { background: var(--danger); } .note.info .dot { background: var(--muted); }
+.summary dl { display: grid; grid-template-columns: 1fr auto; gap: 7px 10px; margin: 0; }
+.summary dt { color: var(--muted); } .summary dd { margin: 0; text-align: right; }
+.issue { display: block; width: 100%; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--danger); border-radius: 4px; padding: 7px 9px; }
+.issue:hover { border-color: #3a4862; border-left-color: var(--danger); }
+.issue .t { color: var(--muted); font-size: 11px; }
+.empty-ok { color: var(--ok); }
+
+/* Hand-placement bar */
+.placebar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); overflow-x: auto; white-space: nowrap; min-height: 40px; background: var(--panel-2); border-radius: var(--r) var(--r) 0 0; scrollbar-width: thin; }
+.pb-title { font-weight: 600; font-size: 12px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.pb-hint { color: var(--muted); font-size: 12px; }
+.pb-group { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.pb-sep { width: 1px; align-self: stretch; background: var(--line); flex: none; margin: 2px 2px; }
+.pb-lbl { font-size: 11px; color: var(--muted); }
+.pb-seg { display: inline-grid; grid-template-columns: auto auto; }
+.pb-seg button { padding: 3px 9px; font-size: 12px; }
+.pb-sel { width: auto; padding: 3px 6px; font-size: 12px; }
+.pb-num { position: relative; display: inline-flex; align-items: center; }
+.pb-num i { position: absolute; left: 6px; font-style: normal; font-size: 10px; color: var(--muted); pointer-events: none; }
+.pb-num em { position: absolute; right: 6px; font-style: normal; font-size: 10px; color: var(--muted); pointer-events: none; }
+.pb-num .inp { width: 78px; padding: 3px 14px 3px 22px; font-size: 12px; -moz-appearance: textfield; appearance: textfield; }
+.pb-num .inp::-webkit-outer-spin-button, .pb-num .inp::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pb-num.wide .inp { padding-left: 34px; }
+.pb-chk { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); flex: none; }
+.chip.add { border-style: dashed; color: var(--text); }
+.chip:hover { border-color: #3a4862; }
+
+/* Timeline */
+.time { grid-area: time; }
+.transport { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.clock { font-family: var(--font-data); font-size: 15px; min-width: 120px; }
+.clock small { color: var(--muted); font-size: 12px; }
+.tl-wrap { position: relative; flex: 1; min-height: 0; padding: 0 10px 8px; }
+.tl { position: relative; height: 100%; user-select: none; touch-action: none; }
+.ruler { position: absolute; left: 0; right: 0; top: 0; height: 22px; border-bottom: 1px solid var(--line); cursor: ew-resize; }
+.tick { position: absolute; top: 0; height: 100%; border-left: 1px solid var(--line); font-size: 10px; color: var(--muted); padding: 4px 0 0 4px; font-family: var(--font-data); }
+.track { position: absolute; left: 0; right: 0; top: 28px; height: 40px; }
+.blk { position: absolute; top: 0; height: 100%; border-radius: 4px; overflow: hidden; font-size: 11px; padding: 5px 7px; white-space: nowrap; text-overflow: ellipsis; }
+.blk.hold { cursor: grab; color: #0c1018; font-weight: 500; }
+.blk.hold.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+.blk.hold .grip { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; background: rgba(0,0,0,.18); }
+.blk.move { background: repeating-linear-gradient(135deg, var(--panel-2) 0 5px, var(--panel) 5px 10px); border: 1px solid var(--line); color: var(--muted); }
+.blk.move.short { border-color: var(--danger); background: repeating-linear-gradient(135deg, rgba(255,107,114,.25) 0 5px, var(--panel) 5px 10px); color: var(--danger); }
+.blk.fixed { background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+.blk.fixed.hover { background: transparent; border-style: dashed; }
+.lenbtn { background: transparent; border: 1px dashed var(--line); border-radius: 4px; padding: 1px 6px; color: var(--muted); font: inherit; font-size: 12px; }
+.lenbtn:hover { border-color: var(--accent); color: var(--text); }
+.lane2 { position: absolute; left: 0; right: 0; top: 71px; height: 6px; }
+.llane { position: absolute; left: 0; right: 0; top: 81px; height: 30px; border-top: 1px dashed var(--line); }
+.llabel { position: absolute; left: 4px; top: 9px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
+.lblk { position: absolute; border-radius: 3px; font-size: 10px; color: #0c1018; padding: 0 4px; overflow: hidden; white-space: nowrap; cursor: grab; box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); display: flex; align-items: center; }
+.lblk .nm { background: rgba(226,231,240,.82); border-radius: 2px; padding: 0 3px; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.lblk.sel { outline: 2px solid var(--text); outline-offset: 1px; z-index: 1; }
+.lblk .grip { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: ew-resize; background: rgba(0,0,0,.25); }
+.llist { display: flex; flex-direction: column; gap: 3px; }
+.litem { display: grid; grid-template-columns: 28px minmax(0,1fr) auto; gap: 9px; align-items: center; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
+.litem:hover { border-color: #3a4862; } .litem.sel { border-color: var(--accent); }
+.lsw { width: 28px; height: 16px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.lnm { display: flex; flex-direction: column; min-width: 0; overflow: hidden; } .lnm small { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt { color: var(--muted); font-size: 11px; }
+.ismark { position: absolute; top: 0; height: 100%; background: var(--danger); border-radius: 2px; min-width: 3px; opacity: .85; }
+.playhead { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--accent); pointer-events: none; }
+.playhead::before { content: ""; position: absolute; top: 0; left: -6px; border: 5px solid transparent; border-top: 7px solid var(--accent); }
+.speed { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+
+/* Modal */
+.scrim { position: fixed; inset: 0; background: rgba(4,6,10,.65); display: grid; place-items: center; z-index: 20; padding: 16px; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: min(460px, 100%); max-height: 90%; overflow: auto; }
+.modal h2 { font-size: 15px; margin: 0; font-weight: 600; }
+.modal .form { gap: 14px; }
+.modal.wide { width: min(720px, 100%); }
+.exfoot { position: sticky; bottom: 0; background: var(--panel); flex-wrap: wrap; }
+.extable { max-height: min(300px, 38vh) !important; }
+.bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; } .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+.exmeta { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 14px; margin: 0; font-size: 12px; } .exmeta dt { color: var(--muted); } .exmeta dd { margin: 0; }
+@media (max-width: 560px) { .exmeta { grid-template-columns: auto auto; } }
+.extable { overflow: auto; max-height: 300px; border: 1px solid var(--line); border-radius: 5px; }
+.extable table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.extable th { position: sticky; top: 0; background: var(--panel-2); text-align: left; font-weight: 500; color: var(--muted); padding: 6px 8px; white-space: nowrap; }
+.extable td { padding: 4px 8px; border-top: 1px solid var(--line); white-space: nowrap; } .extable tr.bad td { color: var(--danger); }
+.modal footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; display: flex; gap: 12px; align-items: center; z-index: 30; }
+
+@media (max-width: 900px) {
+  body { overflow: auto; }
+  html, body { height: auto; }
+  .app { height: auto; grid-template-columns: minmax(0,1fr); grid-template-rows: auto 52vh 240px auto auto;
+    grid-template-areas: "top" "view" "time" "story" "insp"; }
+  .story, .insp { max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand"><b>Formation Studio</b><input id="showName" aria-label="Show name"></div>
+    <span class="savestate" id="saveState" data-state="local">Saved in this browser</span>
+    <span class="pill" id="safetyPill"><span class="dot"></span><span id="safetyText">Checking…</span></span>
+    <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+    <button class="btn" id="tightenBtn" title="Shorten every transition to the fastest safe time">Tighten timing</button>
+    <button class="btn" id="fileBtn">File</button>
+    <button class="btn" id="settingsBtn">Show settings</button>
+    <button class="btn primary" id="exportBtn">Export drone files</button>
+  </header>
+
+  <section class="panel story" aria-label="Storyboard">
+    <div class="panel-head"><span class="eyebrow">Storyboard</span><span class="num" id="droneCountLbl" style="color:var(--muted);font-size:11px"></span></div>
+    <div class="scroll"><ul class="sb-list" id="sbList"></ul></div>
+    <div class="sb-actions">
+      <button class="btn small" id="addBtn">+ Add formation</button>
+      <button class="btn small ghost" id="dupBtn">Duplicate</button>
+      <button class="btn small ghost" id="upBtn" aria-label="Move earlier">↑</button>
+      <button class="btn small ghost" id="downBtn" aria-label="Move later">↓</button>
+      <button class="btn small ghost" id="delBtn">Delete</button>
+    </div>
+    <div class="picker" id="picker" hidden></div>
+  </section>
+
+  <section class="panel view" aria-label="3D stage" id="view">
+    <canvas id="cv"></canvas>
+    <div class="viewbtns">
+      <button class="btn small" data-cam="front">Audience view</button>
+      <button class="btn small" data-cam="top">Top</button>
+      <button class="btn small" data-cam="side">Side</button>
+      <button class="btn small" id="numsBtn" aria-pressed="false" title="Show each drone's number, which matches its export file and takeoff pad">Numbers</button>
+    </div>
+    <div class="hud" id="hud"></div>
+    <div class="tip" id="tip" hidden></div>
+  </section>
+
+  <section class="panel insp" aria-label="Inspector">
+    <div class="panel-head">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabForm" aria-selected="true">Formation</button>
+        <button class="tab" role="tab" id="tabLights" aria-selected="false">Lights</button>
+        <button class="tab" role="tab" id="tabSafety" aria-selected="false">Safety</button>
+      </div>
+    </div>
+    <div class="scroll" id="inspBody"></div>
+  </section>
+
+  <section class="panel time" aria-label="Timeline">
+    <div class="placebar" id="placeBar" aria-label="Hand placement"></div>
+    <div class="transport">
+      <button class="btn small" id="toStart" aria-label="Go to start">⏮</button>
+      <button class="btn small" id="prevF" aria-label="Previous formation">◀︎◀︎</button>
+      <button class="btn small primary" id="playBtn" style="min-width:64px">Play</button>
+      <button class="btn small" id="nextF" aria-label="Next formation">▶︎▶︎</button>
+      <select class="speed" id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+      <span class="clock"><span id="clockNow"></span> <small>/</small> <button class="lenbtn num" id="lenBtn" title="Change the length of the show"></button></span>
+      <span style="margin-left:auto;color:var(--muted);font-size:11px">Drag a formation block to move it · drag its right edge to change the hold</span>
+    </div>
+    <div class="tl-wrap"><div class="tl" id="tl">
+      <div class="ruler" id="ruler"></div>
+      <div class="track" id="track"></div>
+      <div class="lane2" id="lane2"></div>
+      <div class="llane" id="llane"></div>
+      <div class="playhead" id="playhead"></div>
+    </div></div>
+  </section>
+</div>
+<div id="modalRoot"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ===== CORE START (pure show logic, no DOM) =====
+const SHAPES = {
+  grid:     { label: "Grid",     dim: 2 },
+  line:     { label: "Line",     dim: 2 },
+  circle:   { label: "Circle",   dim: 2 },
+  square:   { label: "Square",   dim: 2 },
+  triangle: { label: "Triangle", dim: 2 },
+  star:     { label: "Star",     dim: 2 },
+  heart:    { label: "Heart",    dim: 2 },
+  wave:     { label: "Wave",     dim: 2 },
+  sphere:   { label: "Sphere",   dim: 3 },
+  helix:    { label: "Helix",    dim: 3 },
+  cube:     { label: "Cube",     dim: 3 },
+  cone:     { label: "Cone",     dim: 3 },
+  custom:   { label: "Hand-placed", dim: 3, hidden: true },
+};
+
+function densify(verts, closed, per = 60) {
+  const out = []; const n = verts.length; const m = closed ? n : n - 1;
+  for (let i = 0; i < m; i++) { const a = verts[i], b = verts[(i + 1) % n];
+    for (let k = 0; k < per; k++) { const t = k / per; out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); } }
+  if (!closed) out.push(verts[n - 1]);
+  return out;
+}
+function sampleCurve(dense, closed, n) {
+  const L = [0];
+  for (let i = 1; i < dense.length; i++) L.push(L[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]));
+  let total = L[L.length - 1];
+  if (closed) total += Math.hypot(dense[0][0] - dense[dense.length - 1][0], dense[0][1] - dense[dense.length - 1][1]);
+  const step = closed ? total / n : total / Math.max(n - 1, 1);
+  const pts = []; let j = 0;
+  for (let i = 0; i < n; i++) {
+    const s = Math.min(i * step, L[L.length - 1]);
+    while (j < L.length - 2 && L[j + 1] < s) j++;
+    const seg = L[j + 1] - L[j] || 1, t = (s - L[j]) / seg;
+    const a = dense[j], b = dense[Math.min(j + 1, dense.length - 1)];
+    pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+  }
+  return pts;
+}
+function normalize2(dense) { // centre on bounding box, largest extent = 1
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of dense) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const s = Math.max(x1 - x0, y1 - y0) || 1, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  return dense.map(([x, y]) => [(x - cx) / s, (y - cy) / s]);
+}
+function shapeLocal(shape, n, size) {
+  // Returns n points [u, v, w]: u across, v up (in the formation's plane), w depth. 3D shapes return [x, y, z].
+  if (n <= 0) return [];
+  const flat2 = (pts) => pts.map(([u, v]) => [u * size, v * size, 0]);
+  switch (shape) {
+    case "grid": {
+      const c = Math.ceil(Math.sqrt(n)), r = Math.ceil(n / c), sp = size / Math.max(c - 1, 1), pts = [];
+      for (let i = 0; i < n; i++) { const row = Math.floor(i / c), col = i % c, inRow = row === r - 1 ? n - row * c : c;
+        pts.push([(col - (inRow - 1) / 2) * sp, ((r - 1) / 2 - row) * sp, 0]); }
+      return pts;
+    }
+    case "line": return Array.from({ length: n }, (_, i) => [n > 1 ? -size / 2 + size * i / (n - 1) : 0, 0, 0]);
+    case "circle": return Array.from({ length: n }, (_, i) => { const a = Math.PI / 2 + 2 * Math.PI * i / n; return [size / 2 * Math.cos(a), size / 2 * Math.sin(a), 0]; });
+    case "square": return flat2(sampleCurve(densify([[-.5, .5], [.5, .5], [.5, -.5], [-.5, -.5]], true), true, n));
+    case "triangle": { const h = Math.sqrt(3) / 2; return flat2(sampleCurve(normalize2(densify([[0, h], [.5, 0], [-.5, 0]], true)), true, n)); }
+    case "star": { const v = []; for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? .2 : .5; v.push([r * Math.cos(a), r * Math.sin(a)]); }
+      return flat2(sampleCurve(normalize2(densify(v, true)), true, n)); }
+    case "heart": { const d = []; for (let i = 0; i < 720; i++) { const t = Math.PI * 2 * i / 720;
+        d.push([16 * Math.sin(t) ** 3, 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)]); }
+      return flat2(sampleCurve(normalize2(d), true, n)); }
+    case "wave": { const d = []; for (let i = 0; i <= 400; i++) { const u = i / 400 - .5; d.push([u, .18 * Math.sin(u * Math.PI * 4)]); }
+      return flat2(sampleCurve(d, false, n)); }
+    case "sphere": { const r = size / 2, g = Math.PI * (3 - Math.sqrt(5));
+      return Array.from({ length: n }, (_, i) => { const y = n > 1 ? 1 - 2 * i / (n - 1) : 0, rr = Math.sqrt(Math.max(0, 1 - y * y)), a = g * i;
+        return [r * rr * Math.cos(a), r * rr * Math.sin(a), r * y]; }); }
+    case "helix": return Array.from({ length: n }, (_, i) => { const t = n > 1 ? i / (n - 1) : .5, a = Math.PI * 4 * t, r = size * .35;
+        return [r * Math.cos(a), r * Math.sin(a), (t - .5) * size]; });
+    case "cube": { // points spread over the 12 edges
+      const h = size / 2, c = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+      const E = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      const pts = []; for (let i = 0; i < n; i++) { const pos = i * 12 / n, e = E[Math.floor(pos)], t = pos - Math.floor(pos), a = c[e[0]], b = c[e[1]];
+        pts.push([0,1,2].map(k => h * (a[k] + (b[k] - a[k]) * t))); }
+      return pts; }
+    case "cone": { // spiral up a cone, apex on top
+      return Array.from({ length: n }, (_, i) => { const t = n > 1 ? i / (n - 1) : 0, a = Math.PI * 2 * 2.5 * t, r = size / 2 * (1 - t) + .001;
+        return [r * Math.cos(a), r * Math.sin(a), (t - .5) * size]; }); }
+  }
+  return [];
+}
+function customLocal(pts, n) { // a hand-placed formation keeps one spot per drone; pad or trim if the drone count changed
+  const out = pts.slice(0, n).map(p => p.slice());
+  if (out.length < n) { const extra = shapeLocal("grid", n - out.length, 1); extra.forEach(([u, v]) => out.push([u, 0, v - 1])); }
+  return out;
+}
+function localPoints3(f, n) { // formation spots relative to its centre, before turning: [x, y, z]
+  if (f.shape === "custom") return customLocal(f.points || [], n);
+  const is3 = SHAPES[f.shape] && SHAPES[f.shape].dim === 3;
+  return shapeLocal(f.shape, n, f.size).map(([u, v, w]) => (is3 || f.plane === "flat") ? [u, v, w] : [u, w, v]); // vertical = facing the audience on the −Y side
+}
+function formationPoints(f, n) {
+  const a = (f.rot || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+  return localPoints3(f, n).map(([x, y, z]) => [f.cx + x * ca - y * sa, f.cy + x * sa + y * ca, f.cz + z]);
+}
+function worldToLocal(f, p) {
+  const a = (f.rot || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), dx = p[0] - f.cx, dy = p[1] - f.cy;
+  return [dx * ca + dy * sa, -dx * sa + dy * ca, p[2] - f.cz];
+}
+// ---- Motion inside a formation: keyframed poses plus motion effects (spin, rise and fall, pulse) ----
+const EASES = { smooth: (u) => ease(u), linear: (u) => u, in: (u) => u * u * u, out: (u) => 1 - (1 - u) ** 3 };
+const hasMotion = (f) => !!((f.motion && f.motion.length) || (f.keys && f.keys.length));
+function keyPoses(f, n) { // the formation's own shape is the keyframe at 0 s
+  const ks = (f.keys || []).filter(k => k.t > 1e-6 && k.t <= f.hold + 1e-6).slice().sort((a, b) => a.t - b.t);
+  return [{ t: 0, pts: localPoints3(f, n), ease: f.ease0 || "smooth" }, ...ks.map(k => ({ t: k.t, pts: customLocal(k.pts, n), ease: k.ease || "smooth", id: k.id }))];
+}
+function poseKeysAt(f, n, tau) {
+  const L = keyPoses(f, n); if (L.length === 1 || tau <= 0) return L[0].pts;
+  const last = L[L.length - 1]; if (tau >= last.t) return last.pts;
+  let k = 0; while (k < L.length - 2 && L[k + 1].t <= tau) k++;
+  const A = L[k], B = L[k + 1], dt = B.t - A.t, u = (tau - A.t) / dt;
+  if (f.path === "straight") { const e = (EASES[A.ease] || EASES.smooth)(u); return A.pts.map((p, i) => lerp3(p, B.pts[i], e)); }
+  // Smooth curve through every keyframe (cubic Hermite, Catmull-Rom tangents); drones start and finish at rest.
+  const tan = (j, i) => { if (j === 0 || j === L.length - 1) return [0, 0, 0]; const P = L[j - 1], Q = L[j + 1], sp = Q.t - P.t; return [0, 1, 2].map(q => (Q.pts[i][q] - P.pts[i][q]) / sp); };
+  const u2 = u * u, u3 = u2 * u, h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+  return A.pts.map((p, i) => { const m0 = tan(k, i), m1 = tan(k + 1, i), q = B.pts[i]; return [0, 1, 2].map(c => h00 * p[c] + h10 * dt * m0[c] + h01 * q[c] + h11 * dt * m1[c]); });
+}
+function spotsOf(L, n) { if (Array.isArray(L.spots)) return new Set(L.spots.filter(k => k < n)); if (L.spots === "alternate") return new Set([...Array(n).keys()].filter(k => k % 2 === 0)); return null; }
+function envelope(u) { const r = 0.2; return u < r ? ease(u / r) : u > 1 - r ? ease((1 - u) / r) : 1; }
+function applyMotion(f, P, tau, n) {
+  const u = clamp01(tau / Math.max(f.hold, 1e-6));
+  for (const L of f.motion || []) {
+    const S = spotsOf(L, n);
+    for (let i = 0; i < P.length; i++) {
+      if (S && !S.has(i)) continue; const p = P[i];
+      if (L.type === "spin") { const a = 2 * Math.PI * (L.turns || 0) * (L.smooth === false ? u : ease(u)), c = Math.cos(a), sn = Math.sin(a), ax = L.axis || "z";
+        P[i] = ax === "z" ? [p[0] * c - p[1] * sn, p[0] * sn + p[1] * c, p[2]] : ax === "y" ? [p[0] * c - p[2] * sn, p[1], p[0] * sn + p[2] * c] : [p[0], p[1] * c - p[2] * sn, p[1] * sn + p[2] * c]; }
+      else if (L.type === "bob") { const ph = (L.ripple || 0) * 2 * Math.PI * i / Math.max(P.length, 1);
+        const w = (1 - Math.cos(2 * Math.PI * (L.cycles || 1) * u + ph)) / 2 * (ph ? envelope(u) : 1); P[i] = [p[0], p[1], p[2] + (L.amp || 0) * w]; }
+      else if (L.type === "pulse") { const k = 1 + (L.amount || 0) * (1 - Math.cos(2 * Math.PI * (L.cycles || 1) * u)) / 2; P[i] = [p[0] * k, p[1] * k, p[2] * k]; }
+    }
+  }
+  return P;
+}
+function toWorld(f, P) { const a = (f.rot || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+  return P.map(([x, y, z]) => [f.cx + x * ca - y * sa, f.cy + x * sa + y * ca, f.cz + z]); }
+function poseWorld(f, n, tau, withMotion = true) { const P = poseKeysAt(f, n, tau).map(p => p.slice()); return toWorld(f, withMotion ? applyMotion(f, P, tau, n) : P); }
+
+function crowded(pts, ms) { const bad = pts.map(() => false);
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) if (d3(pts[i], pts[j]) < ms - 1e-6) bad[i] = bad[j] = true; return bad; }
+function homeGrid(n, sp) {
+  const c = Math.ceil(Math.sqrt(n)), r = Math.ceil(n / c), pts = [];
+  for (let i = 0; i < n; i++) { const row = Math.floor(i / c), col = i % c; pts.push([(col - (c - 1) / 2) * sp, ((r - 1) / 2 - row) * sp, 0]); }
+  return pts;
+}
+function hungarian(a) { // square cost matrix → assignment rows→cols (minimum total)
+  const n = a.length, INF = 1e18, u = new Float64Array(n + 1), v = new Float64Array(n + 1), p = new Int32Array(n + 1), way = new Int32Array(n + 1);
+  for (let i = 1; i <= n; i++) {
+    p[0] = i; let j0 = 0; const minv = new Float64Array(n + 1).fill(INF), used = new Uint8Array(n + 1);
+    do { used[j0] = 1; const i0 = p[j0]; let delta = INF, j1 = 0;
+      for (let j = 1; j <= n; j++) if (!used[j]) { const cur = a[i0 - 1][j - 1] - u[i0] - v[j];
+        if (cur < minv[j]) { minv[j] = cur; way[j] = j0; } if (minv[j] < delta) { delta = minv[j]; j1 = j; } }
+      for (let j = 0; j <= n; j++) { if (used[j]) { u[p[j]] += delta; v[j] -= delta; } else minv[j] -= delta; }
+      j0 = j1; } while (p[j0] !== 0);
+    do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+  }
+  const ans = new Array(n); for (let j = 1; j <= n; j++) ans[p[j] - 1] = j - 1; return ans;
+}
+const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+function assignIdx(from, pts) { // minimum sum of squared distances keeps straight-line paths from crossing; drone i → spot ans[i]
+  return hungarian(from.map(a => pts.map(b => { const d = d3(a, b); return d * d; })));
+}
+function assign(from, pts) { const ans = assignIdx(from, pts); return from.map((_, i) => pts[ans[i]]); }
+// Minimum-jerk easing: peak speed = 1.875·d/T, peak acceleration = 5.7735·d/T²
+const ease = (t) => t * t * t * (10 + t * (-15 + 6 * t));
+function minTime(d, st) { if (d < 1e-6) return 0; return Math.max(1.875 * d / st.maxSpeed, Math.sqrt(5.7735 * d / st.maxAccel)); }
+const up1 = (x) => Math.ceil(x * 10 - 1e-9) / 10;
+function minSpacingOf(pts) { let m = Infinity; for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) m = Math.min(m, d3(pts[i], pts[j])); return m; }
+
+// Staggered transitions: drones with the longest paths are scheduled first; each later drone
+// picks the earliest departure delay that keeps it minSpacing away from every drone already scheduled.
+const lerp3 = (a, b, e) => [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e];
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const keyOf = (from, to) => from.map(p => p.map(v => v.toFixed(3)).join(",")).join(";") + "|" + to.map(p => p.map(v => v.toFixed(3)).join(",")).join(";");
+const STAG = new Map(), NEED = new Map();
+function cacheSet(m, k, v) { if (m.size > 400) m.delete(m.keys().next().value); m.set(k, v); return v; }
+function stagger(from, to, T, st, key) {
+  const ck = key + "@" + T.toFixed(2) + "/" + st.minSpacing + "/" + st.maxSpeed + "/" + st.maxAccel;
+  if (STAG.has(ck)) return STAG.get(ck);
+  const N = from.length, d = from.map((a, i) => d3(a, to[i]));
+  const dur = d.map(x => x < 1e-6 ? 0 : Math.min(T, Math.max(minTime(x, st), 0.4)));
+  const dt = 0.05, steps = Math.ceil(T / dt) + 1;
+  let order = [...Array(N).keys()].sort((a, b) => d[b] - d[a]), best = null;
+  // If a drone can't find a safe slot, give it priority and try again (a few rounds).
+  for (let round = 0; round < 3; round++) {
+    const delay = new Array(N).fill(0), done = [], failed = [];
+    const at = (i, tt) => dur[i] === 0 ? from[i] : lerp3(from[i], to[i], ease(clamp01((tt - delay[i]) / dur[i])));
+    let worst = Infinity;
+    for (const i of order) {
+      const slack = Math.max(0, T - dur[i]); let bd = 0, bs = -Infinity;
+      for (let dl = 0; dl <= slack + 1e-9; dl += 0.1) {
+        delay[i] = dl; let m = Infinity;
+        for (let k = 0; k < steps && m >= st.minSpacing; k++) { const tt = k * dt, p = at(i, tt); for (const j of done) { const dd = d3(p, at(j, tt)); if (dd < m) m = dd; } }
+        if (m >= st.minSpacing - 1e-6) { bd = dl; bs = m; break; }
+        if (m > bs) { bs = m; bd = dl; }
+      }
+      delay[i] = bd; if (bs < st.minSpacing - 1e-6) { failed.push(i); worst = Math.min(worst, bs); } done.push(i);
+    }
+    const res = { delay, dur, ok: !failed.length, worst, fails: failed.length, maxDelay: Math.max(...delay) };
+    if (!best || res.fails < best.fails) best = res;
+    if (res.ok) break;
+    order = [...failed, ...order.filter(i => !failed.includes(i))];
+  }
+  return cacheSet(STAG, ck, best);
+}
+function safeWindow(from, to, st, key) { // shortest transition time that is both within limits and conflict-free
+  const ck = key + "/" + st.minSpacing + "/" + st.maxSpeed + "/" + st.maxAccel;
+  if (NEED.has(ck)) return NEED.get(ck);
+  let dmax = 0; for (let i = 0; i < from.length; i++) dmax = Math.max(dmax, d3(from[i], to[i]));
+  const base = up1(minTime(dmax, st)); let bestT = base, bestF = Infinity;
+  for (const extra of [0, 0.5, 1, 2, 3.5]) { const T = up1(base + extra), r = stagger(from, to, T, st, key);
+    if (r.ok) return cacheSet(NEED, ck, { T, base, dmax, ok: true }); if (r.fails < bestF) { bestF = r.fails; bestT = T; } }
+  return cacheSet(NEED, ck, { T: bestT, base, dmax, ok: false });
+}
+
+function compile(show, opts = {}) {
+  // opts.fit: "tighten" sets every formation to start as early as is safe; "push" only moves formations later when too tight.
+  const st = show.settings, N = st.droneCount, segs = [];
+  const home = homeGrid(N, st.takeoffSpacing), air = home.map(p => [p[0], p[1], st.takeoffAlt]);
+  const tk = up1(minTime(st.takeoffAlt, st) + .3);
+  segs.push({ kind: "takeoff", t0: 0, t1: tk, from: home, to: air, c0: "#ffffff", c1: "#ffffff", label: "Takeoff" });
+  let pos = air, t = tk, color = "#ffffff";
+  show.formations.forEach((f, idx) => {
+    const arrive = poseWorld(f, N, 0), map = assignIdx(pos, arrive), target = map.map(k => arrive[k]), key = keyOf(pos, target);
+    const w = safeWindow(pos, target, st, key), need = w.T, dmax = w.dmax;
+    if (opts.fit === "tighten" || (opts.fit === "push" && idx >= (opts.from || 0) && f.start < t + need)) f.start = up1(t + need + .3);
+    const t1 = Math.max(f.start, t), sg = stagger(pos, target, Math.max(t1 - t, 0.05), st, key);
+    segs.push({ kind: "move", t0: t, t1, from: pos, to: target, c0: color, c1: f.color, need, base: w.base, short: (f.start - t) < w.base - 1e-6,
+      conflict: !sg.ok, delay: sg.delay, dur: sg.dur, maxDelay: sg.maxDelay, fid: f.id, label: "→ " + f.name, dmax });
+    const anim = hasMotion(f); let leave = target, spacing = minSpacingOf(target);
+    if (anim) { const P = poseWorld(f, N, f.hold); leave = map.map(k => P[k]);
+      for (let k = 1; k <= 24; k++) spacing = Math.min(spacing, minSpacingOf(poseWorld(f, N, f.hold * k / 24))); }
+    segs.push({ kind: "hold", t0: t1, t1: t1 + f.hold, from: target, to: leave, map, f: anim ? f : null, c0: f.color, c1: f.color, fid: f.id, label: f.name, spacing });
+    pos = leave; t = t1 + f.hold; color = f.color;
+  });
+  const back = assign(pos, air), bkey = keyOf(pos, back); // land wherever is closest; each drone gets a free landing spot
+  const bw = safeWindow(pos, back, st, bkey), rt = up1(bw.T + .3), bs = stagger(pos, back, rt, st, bkey);
+  if (st.length && t + rt + tk < st.length - 1e-6) { // the show is set longer than its content: drones hover in place, then return
+    segs.push({ kind: "hover", t0: t, t1: st.length - rt - tk, from: pos, to: pos, c0: color, c1: color, label: "Hover" }); t = st.length - rt - tk; }
+  segs.push({ kind: "move", t0: t, t1: t + rt, from: pos, to: back, c0: color, c1: "#ffffff", need: rt, base: bw.base, short: false, conflict: !bs.ok,
+    delay: bs.delay, dur: bs.dur, maxDelay: bs.maxDelay, label: "Return", dmax: bw.dmax });
+  t += rt;
+  const ground = back.map(p => [p[0], p[1], 0]);
+  segs.push({ kind: "land", t0: t, t1: t + tk, from: back, to: ground, c0: "#ffffff", c1: "#ffffff", label: "Landing" });
+  return { segs, duration: t + tk, N, home };
+}
+function segAt(c, t) { let s = c.segs[0]; for (const g of c.segs) { if (g.t0 <= t + 1e-9) s = g; else break; } return s; }
+function positionsAt(c, t) {
+  t = Math.max(0, Math.min(t, c.duration)); const g = segAt(c, t);
+  if (g.kind === "hover") return g.from;
+  if (g.kind === "hold") { if (!g.f) return g.from; const P = poseWorld(g.f, c.N, Math.min(t - g.t0, g.t1 - g.t0)); return g.map.map(k => P[k]); }
+  if (g.delay) return g.from.map((a, i) => g.dur[i] === 0 ? a : lerp3(a, g.to[i], ease(clamp01((t - g.t0 - g.delay[i]) / g.dur[i]))));
+  const tau = g.t1 > g.t0 ? clamp01((t - g.t0) / (g.t1 - g.t0)) : 1;
+  return g.from.map((a, i) => lerp3(a, g.to[i], ease(tau)));
+}
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function colorAt(c, t) { const g = segAt(c, t); const tau = g.t1 > g.t0 ? Math.min(1, Math.max(0, (t - g.t0) / (g.t1 - g.t0))) : 1;
+  const a = hex2rgb(g.c0), b = hex2rgb(g.c1); return a.map((x, k) => Math.round(x + (b[k] - x) * tau)); }
+
+// ---- Light effects: layered on top of each formation's base colour, later effects drawn over earlier ones ----
+const LIGHT_TYPES = { solid: "Solid colour", gradient: "Gradient", rainbow: "Rainbow", pulse: "Pulse", blink: "Blink", chase: "Chase", sparkle: "Sparkle", off: "Lights off" };
+const LIGHT_AXES = { x: "Left to right", z: "Bottom to top", y: "Front to back", radial: "Centre outward", order: "Drone number" };
+function hsv(h, sat, v) { h = ((h % 1) + 1) % 1; const i = Math.floor(h * 6), f = h * 6 - i, p = v * (1 - sat), q = v * (1 - f * sat), u = v * (1 - (1 - f) * sat);
+  return [[v, u, p], [q, v, p], [p, v, u], [p, q, v], [u, p, v], [v, p, q]][i % 6].map(x => x * 255); }
+const mixC = (a, b, w) => [a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w, a[2] + (b[2] - a[2]) * w];
+function hash01(a, b) { let h = Math.imul(a + 1, 374761393) ^ Math.imul(b + 7, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+function lightTargets(L, n) { if (L.drones === "alternate") return [...Array(n).keys()].filter(k => k % 2 === 0); if (Array.isArray(L.drones)) return L.drones.filter(k => k < n); return [...Array(n).keys()]; }
+function axisCoord(L, P, idx) { // where each targeted drone sits along the effect's direction, 0..1 across those drones right now
+  const ax = L.axis || "x";
+  if (ax === "order") return idx.map((_, k) => idx.length > 1 ? k / (idx.length - 1) : 0.5);
+  let v;
+  if (ax === "radial") { const c = [0, 1, 2].map(q => idx.reduce((a, i) => a + P[i][q], 0) / idx.length); v = idx.map(i => d3(P[i], c)); }
+  else { const q = ax === "x" ? 0 : ax === "y" ? 1 : 2; v = idx.map(i => P[i][q]); }
+  const lo = Math.min(...v), hi = Math.max(...v); return v.map(x => hi - lo < 1e-6 ? 0.5 : (x - lo) / (hi - lo));
+}
+function lightsAt(c, lights, t, P) { // one [r, g, b] (0-255) per drone at time t, given the drones' positions P
+  const n = P.length, base = colorAt(c, t), out = P.map(() => base.slice());
+  for (const L of lights || []) {
+    const t1 = L.t0 + L.dur; if (L.hidden || t < L.t0 || t > t1) continue;
+    const a = Math.min(1, L.fadeIn > 0 ? (t - L.t0) / L.fadeIn : 1, L.fadeOut > 0 ? (t1 - t) / L.fadeOut : 1); if (a <= 0) continue;
+    const idx = lightTargets(L, n); if (!idx.length) continue;
+    const u = t - L.t0, U = u / Math.max(L.dur, 1e-6), pos = ["gradient", "rainbow", "chase"].includes(L.type) ? axisCoord(L, P, idx) : null;
+    idx.forEach((i, k) => {
+      const cur = out[i], s = pos ? (L.flip ? 1 - pos[k] : pos[k]) : 0, col = () => hex2rgb(L.color || "#ffffff"), bg = L.between === "base" ? cur : [0, 0, 0]; let rgb = cur;
+      switch (L.type) {
+        case "solid": rgb = col(); break;
+        case "gradient": rgb = mixC(hex2rgb(L.color), hex2rgb(L.color2), s); break;
+        case "rainbow": rgb = hsv((L.spread ?? 1) * s - (L.speed || 0) * u, L.sat ?? 1, 1); break;
+        case "pulse": { const ph = (L.ripple || 0) * (idx.length > 1 ? k / idx.length : 0), b = (L.min ?? 0) + (1 - (L.min ?? 0)) * (1 + Math.cos(2 * Math.PI * ((L.rate || 1) * u - ph))) / 2;
+          rgb = (L.keep ? cur : col()).map(x => x * b); break; }
+        case "blink": { let ph = ((L.rate || 1) * u) % 1; if (L.pattern === "alternate" && k % 2) ph = (ph + 0.5) % 1; if (L.pattern === "random") ph = (ph + hash01(i, 3)) % 1;
+          rgb = ph < (L.duty ?? 0.5) ? (L.keep ? cur : col()) : [0, 0, 0]; break; }
+        case "chase": { const w = Math.max(0.02, L.width ?? 0.25), cen = -w + (1 + 2 * w) * ((U * (L.passes ?? 1)) % 1), d = Math.abs(s - cen) / w;
+          rgb = mixC(bg, col(), d < 1 ? (1 + Math.cos(Math.PI * d)) / 2 : 0); break; }
+        case "sparkle": { const r = L.rate || 4, slot = Math.floor(u * r + hash01(i, 11)), fr = u * r + hash01(i, 11) - slot;
+          rgb = mixC(bg, col(), hash01(i, slot) < (L.density ?? 0.3) ? Math.sin(Math.PI * fr) : 0); break; }
+        case "off": rgb = [0, 0, 0]; break;
+      }
+      out[i] = mixC(cur, rgb, a);
+    });
+  }
+  return out.map(q => q.map(v => v < 0 ? 0 : v > 255 ? 255 : Math.round(v)));
+}
+function lightDefaults(type, at, D) {
+  const t0 = Math.max(0, Math.min(Math.round(at * 10) / 10, Math.max(0, D - 1))), dur = Math.round(Math.min(4, Math.max(0.5, D - t0)) * 10) / 10;
+  const p = { solid: { color: "#6fb6ff" }, gradient: { color: "#ff5c7a", color2: "#6fb6ff", axis: "x", flip: false }, rainbow: { axis: "x", spread: 1, speed: 0.25, sat: 1, flip: false },
+    pulse: { rate: 1, min: 0.15, keep: true, color: "#ffffff", ripple: 0 }, blink: { rate: 2, duty: 0.5, pattern: "together", keep: true, color: "#ffffff" },
+    chase: { color: "#ffffff", axis: "x", width: 0.3, passes: 2, between: "dark", flip: false }, sparkle: { color: "#ffffff", density: 0.3, rate: 4, between: "base" }, off: {} }[type];
+  return { id: Math.random().toString(36).slice(2, 9), type, name: LIGHT_TYPES[type], t0, dur, fadeIn: type === "off" ? 1 : 0.5, fadeOut: type === "off" ? 0 : 0.5, drones: "all", ...p };
+}
+function exampleLights(c) { // a few effects spread over the show, so a new show has something to look at
+  const H = c.segs.filter(g => g.kind === "hold"), D = c.duration, out = [], r1 = (x) => Math.round(x * 10) / 10;
+  const put = (k, type, extra) => { const h = H[k]; if (!h) return; out.push({ ...lightDefaults(type, h.t0 - 1, D), dur: r1(h.t1 - h.t0 + 1), ...extra }); };
+  put(0, "rainbow", { name: "Rainbow around the ring", axis: "order", speed: 0.35 });
+  put(1, "gradient", { name: "Sunset, bottom to top", color: "#ff8f5a", color2: "#a596ff", axis: "z" });
+  put(2, "chase", { name: "White sweep upward", axis: "z", passes: 3, between: "base", width: 0.35 });
+  put(3, "sparkle", { name: "Twinkle", density: 0.35, rate: 5, between: "base" });
+  if (!H.length) out.push({ ...lightDefaults("rainbow", D * 0.2, D), dur: r1(D * 0.6), name: "Rainbow", axis: "x" });
+  return out;
+}
+
+function checkShow(c, st) {
+  const dt = 0.05, N = c.N, steps = Math.ceil(c.duration / dt), raw = [];
+  let prev = null, prev2 = null;
+  const hx = st.areaX / 2, hy = st.areaY / 2;
+  for (let k = 0; k <= steps; k++) {
+    const t = Math.min(k * dt, c.duration), P = positionsAt(c, t);
+    for (let i = 0; i < N; i++) {
+      const p = P[i];
+      if (Math.abs(p[0]) > hx + 1e-6 || Math.abs(p[1]) > hy + 1e-6 || p[2] > st.areaZ + 1e-6 || p[2] < -1e-6) raw.push({ type: "fence", key: "f" + i, t, drones: [i] });
+      if (prev) { const v = d3(p, prev[i]) / dt; if (v > st.maxSpeed * 1.03) raw.push({ type: "speed", key: "v" + i, t, drones: [i], val: v }); }
+      if (prev2) { const a = Math.hypot(...[0, 1, 2].map(q => (p[q] - 2 * prev[i][q] + prev2[i][q]) / (dt * dt))); if (a > st.maxAccel * 1.08) raw.push({ type: "accel", key: "a" + i, t, drones: [i], val: a }); }
+      for (let j = i + 1; j < N; j++) { const d = d3(p, P[j]); if (d < st.minSpacing - 1e-6) raw.push({ type: "close", key: "c" + i + "-" + j, t, drones: [i, j], val: d }); }
+    }
+    prev2 = prev; prev = P;
+  }
+  const groups = new Map(); // merge repeats of the same problem into time ranges
+  for (const r of raw) {
+    const g = groups.get(r.key);
+    if (g && r.t - g.t1 <= dt * 1.5) { g.t1 = r.t; if (r.type === "close") g.val = Math.min(g.val, r.val); else if (r.val) g.val = Math.max(g.val, r.val); }
+    else { if (g) groups.set(r.key + "#" + g.t0, g); groups.set(r.key, { type: r.type, t0: r.t, t1: r.t, drones: r.drones, val: r.val }); }
+  }
+  return [...groups.values()].sort((a, b) => a.t0 - b.t0);
+}
+// ---- Export: fit each drone's flight to 7th-degree polynomial pieces, pack .bin and .txt ----
+const EXPORT = { hz: 100, ledHz: 50, tol: 0.005, maxPiece: 2.0, minPiece: 0.1, ledTol: 6, version: 1, header: 32, pieceBytes: 132, ledBytes: 12 };
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes, crc = 0) { crc = ~crc >>> 0; for (let i = 0; i < bytes.length; i++) crc = CRC_T[(crc ^ bytes[i]) & 255] ^ (crc >>> 8); return ~crc >>> 0; }
+const hex32 = (v) => "0x" + (v >>> 0).toString(16).toUpperCase().padStart(8, "0");
+function solveLin(A, b) { // Gaussian elimination with partial pivoting (small dense systems)
+  const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) { let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]]; const d = M[c][c] || 1e-18;
+    for (let r = c + 1; r < n; r++) { const f = M[r][c] / d; if (f) for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; } }
+  const x = new Array(n).fill(0); for (let r = n - 1; r >= 0; r--) { let v = M[r][n]; for (let k = r + 1; k < n; k++) v -= M[r][k] * x[k]; x[r] = v / (M[r][r] || 1e-18); } return x;
+}
+function fitPiece(ys, dt, e0, e1) { // ys sampled every dt over the piece; e0/e1 = [position, velocity, acceleration] at each end. Returns c0..c7 in seconds.
+  const m = ys.length - 1, T = m * dt, H = Array.from({ length: 8 }, () => new Array(8).fill(0)), g = new Array(8).fill(0);
+  for (let j = 0; j <= m; j++) { const sv = j / m, ph = [1]; for (let k = 1; k < 8; k++) ph.push(ph[k - 1] * sv);
+    for (let a = 0; a < 8; a++) { g[a] += ph[a] * ys[j]; for (let b2 = 0; b2 < 8; b2++) H[a][b2] += ph[a] * ph[b2]; } }
+  for (let a = 0; a < 8; a++) H[a][a] += 1e-10;
+  const C = [[1, 0, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 2, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1, 1], [0, 1, 2, 3, 4, 5, 6, 7], [0, 0, 2, 6, 12, 20, 30, 42]];
+  const rhs = [e0[0], e0[1] * T, e0[2] * T * T, e1[0], e1[1] * T, e1[2] * T * T];
+  const K = Array.from({ length: 14 }, (_, r) => Array.from({ length: 14 }, (_, c) => r < 8 ? (c < 8 ? H[r][c] : C[c - 8][r]) : (c < 8 ? C[r - 8][c] : 0)));
+  const a = solveLin(K, [...g, ...rhs]).slice(0, 8);
+  return a.map((v, k) => v / Math.pow(T, k));
+}
+const polyAt = (c, x) => { let v = 0; for (let k = 7; k >= 0; k--) v = v * x + c[k]; return v; }; // Horner
+function sampleShow(c, lights) { // positions on a fixed grid, plus light colours at the LED rate
+  const dt = 1 / EXPORT.hz, K = Math.round(c.duration * EXPORT.hz), pos = [];
+  for (let k = 0; k <= K; k++) pos.push(positionsAt(c, Math.min(k * dt, c.duration)));
+  const step = Math.round(EXPORT.hz / EXPORT.ledHz), col = [], ct = [];
+  for (let k = 0; k <= K; k += step) { ct.push(k * dt); col.push(lightsAt(c, lights, k * dt, pos[k])); }
+  if ((K % step) !== 0) { ct.push(K * dt); col.push(lightsAt(c, lights, K * dt, pos[K])); }
+  return { dt, K, pos, col, ct };
+}
+function structuralBreaks(c, i) { // times where this drone's motion changes character: segment edges, departures, arrivals, keyframes
+  const b = [0, c.duration];
+  for (const g of c.segs) { b.push(g.t0, g.t1);
+    if (g.delay) { b.push(g.t0 + g.delay[i], g.t0 + g.delay[i] + g.dur[i]); }
+    if (g.kind === "hold" && g.f) for (const k of g.f.keys || []) if (k.t > 0 && k.t < g.f.hold) b.push(g.t0 + k.t); }
+  return b;
+}
+function fitDrone(c, S, i) {
+  const { dt, K, pos } = S, minK = Math.max(4, Math.round(0.04 / dt)), maxK = Math.round(EXPORT.maxPiece / dt), splitMinK = Math.round(EXPORT.minPiece / dt);
+  let idx = [...new Set(structuralBreaks(c, i).map(x => Math.max(0, Math.min(K, Math.round(x / dt)))))].sort((a, b) => a - b), B = [idx[0]];
+  for (const k of idx.slice(1)) if (k - B[B.length - 1] >= minK) B.push(k); else if (k === K) B[B.length - 1] = K;
+  const y = (k, q) => pos[k][i][q];
+  const ends = (k, side, q) => { // [position, velocity, acceleration] from the samples on one side of a breakpoint (or both, at smooth splits)
+    const h = dt; if (side === "c") return [y(k, q), (y(k + 1, q) - y(k - 1, q)) / (2 * h), (y(k + 1, q) - 2 * y(k, q) + y(k - 1, q)) / (h * h)];
+    const s = side === "f" ? 1 : -1, y0 = y(k, q), y1 = y(k + s, q), y2 = y(k + 2 * s, q), y3 = y(k + 3 * s, q);
+    return [y0, s * (-3 * y0 + 4 * y1 - y2) / (2 * h), (2 * y0 - 5 * y1 + 4 * y2 - y3) / (h * h)]; };
+  const pieces = []; let worst = 0;
+  const fit = (a, b, sa, sb) => {
+    const cs = [0, 1, 2].map(q => fitPiece(Array.from({ length: b - a + 1 }, (_, j) => y(a + j, q)), dt, ends(a, sa, q), ends(b, sb, q)).map(v => Math.abs(v) < 1e-8 ? 0 : Math.fround(v))); // drop rounding noise
+    let err = 0; for (let j = a; j <= b; j++) { const x = (j - a) * dt; err = Math.max(err, Math.hypot(...[0, 1, 2].map(q => polyAt(cs[q], x) - y(j, q)))); }
+    if (err > EXPORT.tol && b - a >= 2 * splitMinK) { const mid = Math.round((a + b) / 2); fit(a, mid, sa, "c"); fit(mid, b, "c", sb); return; }
+    worst = Math.max(worst, err); pieces.push({ dur: Math.fround((b - a) * dt), x: cs[0], y: cs[1], z: cs[2], yaw: new Array(8).fill(0) });
+  };
+  for (let n = 0; n < B.length - 1; n++) { const a = B[n], b = B[n + 1], parts = Math.ceil((b - a) / maxK);
+    for (let p = 0; p < parts; p++) { const pa = a + Math.round((b - a) * p / parts), pb = a + Math.round((b - a) * (p + 1) / parts);
+      fit(pa, pb, p === 0 ? "f" : "c", p === parts - 1 ? "b" : "c"); } }
+  return { pieces, worst };
+}
+function ledEvents(S, i) { // simplify the colour track into "at start_s, fade over fade_s to r,g,b" events
+  const t = S.ct, C = S.col.map(f => f[i]), tol = EXPORT.ledTol, keep = [0];
+  const same = (p, q) => p[0] === q[0] && p[1] === q[1] && p[2] === q[2];
+  let a = 0, flat = true;
+  for (let j = 2; j < C.length; j++) {
+    if (flat && same(C[j], C[a]) && same(C[j - 1], C[a])) continue;
+    let ok = true; for (let m = a + 1; m < j && ok; m++) { const w = (t[m] - t[a]) / (t[j] - t[a]); for (let q = 0; q < 3; q++) if (Math.abs(C[a][q] + (C[j][q] - C[a][q]) * w - C[m][q]) > tol) { ok = false; break; } }
+    if (!ok) { a = j - 1; keep.push(a); flat = same(C[j], C[a]); } else if (!same(C[j], C[a])) flat = false;
+  }
+  if (keep[keep.length - 1] !== C.length - 1) keep.push(C.length - 1);
+  const ev = [{ t: 0, fade: 0, rgb: C[0] }];
+  for (let k = 1; k < keep.length; k++) { const p = keep[k - 1], q = keep[k]; if (!same(C[p], C[q])) ev.push({ t: t[p], fade: t[q] - t[p], rgb: C[q] }); }
+  return ev;
+}
+function buildDroneFile(meta, droneNo, fitted, ev) {
+  const H = EXPORT.header, n = fitted.pieces.length, buf = new ArrayBuffer(H + n * EXPORT.pieceBytes + ev.length * EXPORT.ledBytes), dv = new DataView(buf), u8 = new Uint8Array(buf);
+  "DSHW".split("").forEach((ch, k) => dv.setUint8(k, ch.charCodeAt(0)));
+  dv.setUint16(4, EXPORT.version, true); dv.setUint16(6, droneNo, true); dv.setUint32(8, meta.showId, true);
+  dv.setUint32(12, n, true); dv.setUint32(16, ev.length, true); dv.setFloat32(20, meta.duration, true); dv.setUint32(24, 0, true); dv.setUint32(28, 0, true);
+  let o = H;
+  for (const p of fitted.pieces) { dv.setFloat32(o, p.dur, true); o += 4; for (const arr of [p.x, p.y, p.z, p.yaw]) for (const v of arr) { dv.setFloat32(o, v, true); o += 4; } }
+  for (const e of ev) { dv.setFloat32(o, e.t, true); dv.setFloat32(o + 4, e.fade, true); dv.setUint8(o + 8, e.rgb[0]); dv.setUint8(o + 9, e.rgb[1]); dv.setUint8(o + 10, e.rgb[2]); dv.setUint8(o + 11, 0); o += 12; }
+  const crc = crc32(u8); dv.setUint32(24, crc, true);
+  const f9 = (v) => { const x = Math.fround(v); return x === 0 ? "0" : String(+x.toPrecision(9)); };
+  const L = [`# Formation Studio drone show file (text copy of the .bin)`, `format_version ${EXPORT.version}`, `show_name ${JSON.stringify(meta.name)}`, `show_id ${hex32(meta.showId)}`,
+    `drone ${droneNo} of ${meta.drones}`, `duration_s ${f9(meta.duration)}`, `pieces ${n}`, `led_events ${ev.length}`, `crc32 ${hex32(crc)}`,
+    `takeoff_pad_m ${meta.pads[droneNo - 1].map(v => v.toFixed(3)).join(" ")}`,
+    `# Coordinates in metres: x = audience left to right, y = away from the audience, z = up; origin = centre of the flight-area floor.`,
+    `# Each piece: duration in seconds, then coefficients c0..c7 for x, y, z and yaw (radians).`,
+    `# Position during a piece = c0 + c1*t + c2*t^2 + ... + c7*t^7, with t = seconds since the piece started.`, ``];
+  fitted.pieces.forEach((p, k) => { L.push(`piece ${k} ${f9(p.dur)}`); for (const [nm, arr] of [["x", p.x], ["y", p.y], ["z", p.z], ["yaw", p.yaw]]) L.push(`  ${nm} ${arr.map(f9).join(" ")}`); });
+  L.push(``, `# led <start_s> <fade_s> <r> <g> <b>: from start_s, fade from the current colour to r,g,b over fade_s seconds, then hold.`);
+  for (const e of ev) L.push(`led ${f9(e.t)} ${f9(e.fade)} ${e.rgb.join(" ")}`);
+  return { bin: u8, txt: L.join("\n") + "\n", crc };
+}
+function parseDroneBin(u8) { // reads a .bin back exactly as the ESP32 would; used to verify every export
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), magic = String.fromCharCode(...u8.slice(0, 4));
+  const n = dv.getUint32(12, true), m = dv.getUint32(16, true), crc = dv.getUint32(24, true), z = u8.slice(); new DataView(z.buffer).setUint32(24, 0, true);
+  const pieces = []; let o = EXPORT.header;
+  for (let k = 0; k < n; k++) { const dur = dv.getFloat32(o, true); o += 4; const c = []; for (let q = 0; q < 32; q++) { c.push(dv.getFloat32(o, true)); o += 4; } pieces.push({ dur, x: c.slice(0, 8), y: c.slice(8, 16), z: c.slice(16, 24) }); }
+  const leds = []; for (let k = 0; k < m; k++) { leds.push({ t: dv.getFloat32(o, true), fade: dv.getFloat32(o + 4, true), rgb: [u8[o + 8], u8[o + 9], u8[o + 10]] }); o += 12; }
+  return { magic, version: dv.getUint16(4, true), drone: dv.getUint16(6, true), showId: dv.getUint32(8, true), duration: dv.getFloat32(20, true), crcOk: crc32(z) === crc && o === u8.length, pieces, leds };
+}
+function evalPieces(pieces, t) { let t0 = 0; for (const p of pieces) { if (t <= t0 + p.dur + 1e-6) { const x = Math.max(0, t - t0); return [polyAt(p.x, x), polyAt(p.y, x), polyAt(p.z, x)]; } t0 += p.dur; }
+  const p = pieces[pieces.length - 1]; return [polyAt(p.x, p.dur), polyAt(p.y, p.dur), polyAt(p.z, p.dur)]; }
+function makeZip(files) { // uncompressed .zip
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const now = new Date(), dtime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1), ddate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  for (const f of files) {
+    const name = enc.encode(f.name), data = typeof f.data === "string" ? enc.encode(f.data) : f.data, crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30)); [[0, 0x04034b50, 4], [4, 20, 2], [6, 0, 2], [8, 0, 2], [10, dtime, 2], [12, ddate, 2], [14, crc, 4], [18, data.length, 4], [22, data.length, 4], [26, name.length, 2], [28, 0, 2]]
+      .forEach(([o, v, w]) => w === 4 ? lh.setUint32(o, v, true) : lh.setUint16(o, v, true));
+    const ch = new DataView(new ArrayBuffer(46)); [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0, 2], [10, 0, 2], [12, dtime, 2], [14, ddate, 2], [16, crc, 4], [20, data.length, 4], [24, data.length, 4], [28, name.length, 2], [30, 0, 2], [32, 0, 2], [34, 0, 2], [36, 0, 2], [38, 0, 4], [42, off, 4]]
+      .forEach(([o, v, w]) => w === 4 ? ch.setUint32(o, v, true) : ch.setUint16(o, v, true));
+    parts.push(new Uint8Array(lh.buffer), name, data); central.push(new Uint8Array(ch.buffer), name); off += 30 + name.length + data.length;
+  }
+  const csize = central.reduce((a, b) => a + b.length, 0), end = new DataView(new ArrayBuffer(22));
+  [[0, 0x06054b50, 4], [4, 0, 2], [6, 0, 2], [8, files.length, 2], [10, files.length, 2], [12, csize, 4], [16, off, 4], [20, 0, 2]].forEach(([o, v, w]) => w === 4 ? end.setUint32(o, v, true) : end.setUint16(o, v, true));
+  const all = [...parts, ...central, new Uint8Array(end.buffer)], out = new Uint8Array(all.reduce((a, b) => a + b.length, 0)); let p = 0; for (const a of all) { out.set(a, p); p += a.length; } return out;
+}
+const FORMAT_SPEC = `# Drone show file format, version 1
+
+One file per drone. \`drone_NN.bin\` is what the ESP32 loads; \`drone_NN.txt\` holds exactly the same numbers in readable form.
+
+## Coordinates
+Metres. x runs left to right as the audience sees it, y points away from the audience, z points up. The origin is the centre of the flight-area floor. Drone N takes off from takeoff pad N (see takeoff_layout.csv).
+
+## .bin layout (little-endian)
+| Offset | Type | Field |
+|---|---|---|
+| 0 | 4 × char | Magic "DSHW" |
+| 4 | uint16 | Format version (1) |
+| 6 | uint16 | Drone number (1-based, matches the designer) |
+| 8 | uint32 | Show ID (changes whenever the show changes) |
+| 12 | uint32 | Piece count (P) |
+| 16 | uint32 | LED event count (E) |
+| 20 | float32 | Show length in seconds |
+| 24 | uint32 | CRC-32 (IEEE) of the whole file, computed with these 4 bytes set to zero |
+| 28 | uint32 | Reserved (0) |
+| 32 | P × 132 bytes | Trajectory pieces |
+| 32 + 132·P | E × 12 bytes | LED events |
+
+File size must equal 32 + 132·P + 12·E.
+
+### Trajectory piece (132 bytes = 33 float32)
+duration (s), then x c0..c7, y c0..c7, z c0..c7, yaw c0..c7 (radians; always 0 in version 1).
+Pieces play back to back from t = 0. Inside a piece, with t = seconds since that piece started:
+position = c0 + c1·t + c2·t² + … + c7·t⁷. Evaluate with Horner's method. Velocity and acceleration are the first and second derivatives.
+Neighbouring pieces meet with the same position, velocity and acceleration.
+
+### LED event (12 bytes)
+float32 start_s, float32 fade_s, uint8 r, uint8 g, uint8 b, uint8 reserved (0).
+From start_s, fade linearly from the current colour to (r, g, b) over fade_s seconds, then hold until the next event. Events are in time order; the first is at 0 s.
+
+## Checks the drone should run on upload
+Magic is "DSHW"; version is supported; drone number matches its own; file size matches the counts; CRC-32 matches; every duration is positive; the first position is within a few centimetres of its takeoff pad.
+`;
+
+// ===== CORE END =====
+
+// ---------- Show state ----------
+const uid = () => Math.random().toString(36).slice(2, 9);
+function defaultShow() {
+  const s = { version: 1, name: "Test show",
+    settings: { droneCount: 20, areaX: 6, areaY: 6, areaZ: 3, minSpacing: 0.5, maxSpeed: 1.5, maxAccel: 1.0, takeoffSpacing: 0.8, takeoffAlt: 1.0 },
+    formations: [
+      { id: uid(), name: "Opening ring", shape: "circle", plane: "flat", size: 3.6, cx: 0, cy: 0, cz: 1.6, rot: 0, start: 0, hold: 8, color: "#a596ff",
+        motion: [{ id: uid(), type: "spin", turns: 0.5, axis: "z", smooth: true, spots: "all" }, { id: uid(), type: "bob", amp: 0.5, cycles: 1, ripple: 0, spots: [0, 10] }] },
+      { id: uid(), name: "Helix", shape: "helix", plane: "flat", size: 2.4, cx: 0, cy: 0, cz: 1.5, rot: 0, start: 0, hold: 4, color: "#4fd1c5" },
+      { id: uid(), name: "Globe", shape: "sphere", plane: "flat", size: 2.4, cx: 0, cy: 0, cz: 1.5, rot: 0, start: 0, hold: 5, color: "#f0b54a" },
+      { id: uid(), name: "Wall", shape: "grid", plane: "vertical", size: 2.6, cx: 0, cy: 0, cz: 1.5, rot: 0, start: 0, hold: 4, color: "#ff5c7a" },
+    ] };
+  s.lights = exampleLights(compile(s, { fit: "tighten" })); return s;
+}
+const STORE = "formation-studio-show-v1";
+const validShow = (s) => s && s.version === 1 && s.settings && Array.isArray(s.formations);
+function loadLocal() { try { const j = localStorage.getItem(STORE); if (!j) return null; const o = JSON.parse(j);
+  if (o && validShow(o.show)) return o; if (validShow(o)) return { show: o, savedAt: 0 }; } catch (e) {} return null; }
+// Autosave: every change goes to this browser at once and to your claude.ai account a moment later.
+const saver = { ref: null, busy: false, again: false, lastCloud: "", timer: 0, localTimer: 0, savedAt: 0, loadedAt: 0, state: "local" };
+function writeLocal() { try { localStorage.setItem(STORE, JSON.stringify({ savedAt: saver.savedAt, show })); } catch (e) {} }
+function saveShow() {
+  saver.savedAt = Date.now(); clearTimeout(saver.localTimer); saver.localTimer = setTimeout(writeLocal, 250);
+  if (saver.ref) { setSaveUI("saving"); clearTimeout(saver.timer); saver.timer = setTimeout(pushCloud, 900); }
+}
+async function pushCloud() {
+  if (!saver.ref) return; if (saver.busy) { saver.again = true; return; }
+  const body = JSON.stringify(show); if (body === saver.lastCloud) { setSaveUI("saved"); return; }
+  if (body.length > 240000) { setSaveUI("error", "This show is too large to save to your account; it is kept in this browser."); return; }
+  saver.busy = true;
+  try { await saver.ref.set({ show: JSON.parse(body), savedAt: saver.savedAt || Date.now() }); saver.lastCloud = body; setSaveUI("saved"); }
+  catch (e) { if (e && e.code === "unavailable" && !saver.retried) { saver.retried = true; setTimeout(pushCloud, 1500 + Math.random() * 1000); }
+    else setSaveUI("error", "Couldn't reach your account; changes are kept in this browser and will retry."); }
+  finally { saver.busy = false; if (saver.again) { saver.again = false; pushCloud(); } }
+}
+function flushSave() { clearTimeout(saver.localTimer); writeLocal(); if (saver.ref) { clearTimeout(saver.timer); pushCloud(); } }
+addEventListener("pagehide", flushSave); document.addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
+setInterval(() => { if (saver.state === "error" && saver.ref) { saver.retried = false; pushCloud(); } }, 30000);
+function setSaveUI(state, msg) {
+  saver.state = state; const el = document.getElementById("saveState"); if (!el) return;
+  const txt = { saving: "Saving…", saved: "Saved to your account", local: "Saved in this browser", error: "Saved in this browser only" }[state];
+  el.textContent = txt; el.title = msg || (state === "saved" ? "Every change is saved automatically to your claude.ai account." : state === "local" ? "Every change is saved automatically in this browser." : "");
+  el.dataset.state = state;
+}
+
+const localCopy = loadLocal(); saver.loadedAt = localCopy ? localCopy.savedAt || 0 : 0;
+let show = localCopy ? localCopy.show : defaultShow();
+let compiled = compile(show), issues = [], t = 0, playing = false, selectedId = show.formations[0]?.id || null, tab = "form";
+let history = [], future = [], lastCommitted = JSON.stringify(show);
+function commit() { const now = JSON.stringify(show); if (now === lastCommitted) return; history.push(lastCommitted); if (history.length > 80) history.shift(); future = []; lastCommitted = now; saveShow(); }
+function undo() { if (!history.length) return; future.push(JSON.stringify(show)); show = JSON.parse(history.pop()); lastCommitted = JSON.stringify(show); if (!show.formations.find(f => f.id === selectedId)) selectedId = show.formations[0]?.id || null; rebuildAll(); saveShow(); }
+
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1); };
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const sel = () => show.formations.find(f => f.id === selectedId) || null;
+
+// ---------- 3D stage ----------
+const S2T = (p) => new THREE.Vector3(p[0], p[2], -p[1]); // show: x right, y away from audience, z up
+const canvas = $("cv"), view = $("view");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene(); scene.background = new THREE.Color("#080b11");
+const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 200);
+const controls = new THREE.OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = .12;
+function setCam(kind) {
+  const st = show.settings, D = Math.max(st.areaX, st.areaY, st.areaZ * 2);
+  controls.target.set(0, st.areaZ / 2, 0);
+  if (kind === "top") camera.position.set(0, D * 2.1, 0.001);
+  else if (kind === "side") camera.position.set(D * 1.9, st.areaZ * .6, 0);
+  else camera.position.set(0, st.areaZ * .9, D * 1.75);
+  controls.update();
+}
+const areaGroup = new THREE.Group(), droneGroup = new THREE.Group(), ghostGroup = new THREE.Group(); scene.add(areaGroup, droneGroup, ghostGroup);
+function textSprite(text, color, scale) {
+  const c = document.createElement("canvas"); c.width = 512; c.height = 96; const g = c.getContext("2d");
+  g.fillStyle = color; g.font = "500 44px 'IBM Plex Sans', system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.letterSpacing = "8px"; g.fillText(text, 256, 48);
+  const tex = new THREE.CanvasTexture(c); const m = new THREE.Mesh(new THREE.PlaneGeometry(scale * 5.33, scale), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+  return m;
+}
+function buildArea() {
+  areaGroup.clear(); const st = show.settings, ax = st.areaX, ay = st.areaY, az = st.areaZ;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(ax, ay), new THREE.MeshBasicMaterial({ color: "#0e131c" }));
+  floor.rotation.x = -Math.PI / 2; areaGroup.add(floor);
+  const lines = [], step = 0.5;
+  for (let x = -ax / 2; x <= ax / 2 + 1e-6; x += step) lines.push(x, 0.001, -ay / 2, x, 0.001, ay / 2);
+  for (let y = -ay / 2; y <= ay / 2 + 1e-6; y += step) lines.push(-ax / 2, 0.001, y, ax / 2, 0.001, y);
+  const gg = new THREE.BufferGeometry(); gg.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+  areaGroup.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: "#1c2535" })));
+  const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(ax, az, ay)), new THREE.LineBasicMaterial({ color: "#3a4762" }));
+  box.position.y = az / 2; areaGroup.add(box);
+  const lbl = textSprite("AUDIENCE", "#8592a7", 0.32); lbl.rotation.x = -Math.PI / 2; lbl.position.set(0, 0.002, ay / 2 + 0.45); areaGroup.add(lbl);
+  const homeMat = new THREE.MeshBasicMaterial({ color: "#3a4762", side: THREE.DoubleSide });
+  compiled.home.forEach((p, k) => { if (!showNums) return; const lb = numberSprite(String(k + 1), true); lb.position.copy(S2T(p)); lb.position.y = 0.004; lb.position.z += 0.2; areaGroup.add(lb); });
+  for (const p of compiled.home) { const r = new THREE.Mesh(new THREE.RingGeometry(0.09, 0.12, 24), homeMat); r.rotation.x = -Math.PI / 2; r.position.copy(S2T(p)); r.position.y = 0.003; areaGroup.add(r); }
+}
+function glowTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d");
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(.25, "rgba(255,255,255,.55)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+}
+const GLOW = glowTexture(), RINGGEO = new THREE.RingGeometry(0.1, 0.125, 28); let drones = [];
+let showNums = false; try { showNums = localStorage.getItem("fs-nums") === "1"; } catch (e) {}
+function numberSprite(txt, onFloor) {
+  const c = document.createElement("canvas"); c.width = 64; c.height = 32; const g = c.getContext("2d");
+  if (!onFloor) { g.fillStyle = "rgba(12,16,24,.78)"; g.beginPath(); g.roundRect ? g.roundRect(8, 3, 48, 26, 7) : g.rect(8, 3, 48, 26); g.fill(); }
+  g.fillStyle = onFloor ? "#8592a7" : "#e2e7f0"; g.font = "600 20px 'IBM Plex Mono', ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, 32, 17);
+  const tex = new THREE.CanvasTexture(c);
+  if (onFloor) { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.14), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; return m; }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })); s.scale.set(0.26, 0.13, 1); s.renderOrder = 7; return s;
+}
+function buildDrones() {
+  droneGroup.clear(); drones = [];
+  const geo = new THREE.SphereGeometry(0.055, 16, 12);
+  for (let i = 0; i < compiled.N; i++) {
+    const core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: "#ffffff" })); core.userData.idx = i;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: "#ffffff", blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: .9 }));
+    glow.scale.set(.42, .42, 1);
+    const ring = new THREE.Mesh(RINGGEO, new THREE.MeshBasicMaterial({ color: "#ffffff", depthTest: false, transparent: true, side: THREE.DoubleSide })); ring.renderOrder = 6; ring.visible = false;
+    const label = numberSprite(String(i + 1)); label.visible = showNums;
+    droneGroup.add(core, glow, ring, label); drones.push({ core, glow, ring, label });
+  }
+}
+const trailGroup = new THREE.Group(); scene.add(trailGroup);
+function buildGhost() {
+  ghostGroup.clear(); trailGroup.clear(); const f = sel(); if (!f) return;
+  const hold = compiled.segs.find(g => g.kind === "hold" && g.fid === f.id), move = compiled.segs.find(g => g.kind === "move" && g.fid === f.id);
+  if (!hold) return;
+  const ring = new THREE.RingGeometry(0.08, 0.1, 20), mat = new THREE.MeshBasicMaterial({ color: "#e2e7f0", transparent: true, opacity: .35, side: THREE.DoubleSide, depthWrite: false });
+  for (const p of hold.from) { const m = new THREE.Mesh(ring, mat); m.position.copy(S2T(p)); m.lookAt(camera.position); m.userData.billboard = true; ghostGroup.add(m); }
+  if (hasMotion(f)) { const N = compiled.N, steps = 48, arr = [];
+    const frames = Array.from({ length: steps + 1 }, (_, k) => poseWorld(f, N, f.hold * k / steps));
+    for (let i = 0; i < N; i++) for (let k = 0; k < steps; k++) { const A = S2T(frames[k][i]), B = S2T(frames[k + 1][i]); arr.push(A.x, A.y, A.z, B.x, B.y, B.z); }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    trailGroup.add(new THREE.LineSegments(g, new THREE.LineDashedMaterial({ color: f.color, transparent: true, opacity: .55, dashSize: .05, gapSize: .04 })).computeLineDistances()); }
+  if (move) { const arr = []; move.from.forEach((a, i) => { const A = S2T(a), B = S2T(move.to[i]); arr.push(A.x, A.y, A.z, B.x, B.y, B.z); });
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    ghostGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: move.short ? "#ff6b72" : "#a596ff", transparent: true, opacity: .35 }))); }
+}
+function resize() { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(view);
+
+// ---------- Direct manipulation: hover, select and drag any drone ----------
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let hoverIdx = -1;
+function setMouse(e) { const r = canvas.getBoundingClientRect(); mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(mouse, camera); return r; }
+const edit = { sel: new Set(), free: new Set(), snap: true, drag: null, lastTau: null }; // free: drones picked outside any formation // sel holds spot numbers in the selected formation
+const T2S = (v) => [v.x, -v.z, v.y], r3 = (v) => +v.toFixed(3);
+const holdOf = (f) => compiled.segs.find(g => g.kind === "hold" && g.fid === f.id);
+const activeHold = () => { const g = segAt(compiled, t); return g.kind === "hold" ? g : null; };
+function editTau(f) { const h = f && holdOf(f); if (!h) return 0; return Math.round(Math.max(0, Math.min(f.hold, t - h.t0)) * 10) / 10; }
+const keyAt = (f, tau) => (f.keys || []).find(k => Math.abs(k.t - tau) < 0.05);
+function ensureCustom(f) { if (f.shape === "custom") return;
+  f.points = localPoints3(f, compiled.N).map(p => p.map(r3)); f.shape = "custom";
+  toast("This formation is now hand-placed, so each drone can move on its own. Undo restores the shape."); }
+function clampArea(p) { const st = show.settings; return [Math.max(-st.areaX / 2, Math.min(st.areaX / 2, p[0])), Math.max(-st.areaY / 2, Math.min(st.areaY / 2, p[1])), Math.max(0.2, Math.min(st.areaZ, p[2]))]; }
+function unMotion(f, i, p, tau, n) { // undo the motion effects for one spot, so a drone lands exactly where it was dropped
+  const u = clamp01(tau / Math.max(f.hold, 1e-6)); p = p.slice();
+  for (const L of [...(f.motion || [])].reverse()) {
+    const S = spotsOf(L, n); if (S && !S.has(i)) continue;
+    if (L.type === "spin") { const a = -2 * Math.PI * (L.turns || 0) * (L.smooth === false ? u : ease(u)), c = Math.cos(a), sn = Math.sin(a), ax = L.axis || "z";
+      p = ax === "z" ? [p[0] * c - p[1] * sn, p[0] * sn + p[1] * c, p[2]] : ax === "y" ? [p[0] * c - p[2] * sn, p[1], p[0] * sn + p[2] * c] : [p[0], p[1] * c - p[2] * sn, p[1] * sn + p[2] * c]; }
+    else if (L.type === "bob") { const ph = (L.ripple || 0) * 2 * Math.PI * i / Math.max(n, 1); p[2] -= (L.amp || 0) * (1 - Math.cos(2 * Math.PI * (L.cycles || 1) * u + ph)) / 2 * (ph ? envelope(u) : 1); }
+    else if (L.type === "pulse") { const k = 1 + (L.amount || 0) * (1 - Math.cos(2 * Math.PI * (L.cycles || 1) * u)) / 2; p = p.map(v => v / k); }
+  }
+  return p;
+}
+function writeWorld(f, changes) { // changes: spot → where the drone should be at the playhead. At 0 s this reshapes the formation; later it sets a keyframe.
+  const N = compiled.N, tau = editTau(f), local = new Map();
+  for (const [j, p] of changes) local.set(j, unMotion(f, j, worldToLocal(f, p), tau, N).map(r3));
+  if (tau < 0.05) { ensureCustom(f); for (const [j, p] of local) f.points[j] = p; return; }
+  f.keys = f.keys || []; let k = keyAt(f, tau);
+  if (!k) { k = { id: uid(), t: tau, ease: "smooth", pts: poseKeysAt(f, N, tau).map(p => p.map(r3)) }; f.keys.push(k); f.keys.sort((a, b) => a.t - b.t);
+    toast(`Added a keyframe at ${tau.toFixed(1)} s into ${f.name}. The drones now glide to this position.`); }
+  else k.pts = customLocal(k.pts, N);
+  for (const [j, p] of local) k.pts[j] = p;
+}
+const spotsNow = (f) => poseWorld(f, compiled.N, editTau(f)); // where each spot's drone is at the playhead
+canvas.addEventListener("pointermove", (e) => {
+  const r = setMouse(e), tip = $("tip");
+  if (edit.drag) { dragMove(); return; }
+  const hit = ray.intersectObjects(drones.map(d => d.core))[0];
+  if (hit) { hoverIdx = hit.object.userData.idx; tip.hidden = false; tip.style.left = (e.clientX - r.left + 12) + "px"; tip.style.top = (e.clientY - r.top + 12) + "px"; canvas.style.cursor = "grab"; }
+  else { hoverIdx = -1; tip.hidden = true; canvas.style.cursor = ""; }
+});
+canvas.addEventListener("pointerleave", () => { hoverIdx = -1; $("tip").hidden = true; });
+view.addEventListener("pointerdown", (e) => { // capture phase: a press on a drone never reaches the orbit controls
+  if (e.target !== canvas || e.button !== 0) return;
+  setMouse(e); const hit = ray.intersectObjects(drones.map(d => d.core))[0];
+  if (!hit) { if (!e.shiftKey && edit.sel.size) { edit.sel.clear(); renderInspector(); } return; }
+  e.stopPropagation(); playing = false; updatePlay();
+  const i = hit.object.userData.idx; let g = activeHold();
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir); // drag across the plane that faces the camera most
+  const ax = Math.abs(dir.x), ay = Math.abs(dir.y), az = Math.abs(dir.z);
+  const axis = ay >= ax && ay >= az ? 2 : az >= ax ? 1 : 0; // show axis held fixed: 2 = height (top view), 1 = depth (audience view), 0 = X (side view)
+  const normal = axis === 2 ? new THREE.Vector3(0, 1, 0) : axis === 1 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.object.position.clone()), start = new THREE.Vector3();
+  if (!g) { // no formation here (takeoff, a transition, extra time): move drones freely; letting go saves a new pose at this moment
+    if (e.shiftKey) { edit.free.has(i) ? edit.free.delete(i) : edit.free.add(i); return; }
+    if (!edit.free.has(i)) { edit.free.clear(); edit.free.add(i); }
+    if (!ray.ray.intersectPlane(plane, start)) return;
+    const P = positionsAt(compiled, t);
+    edit.drag = { plane, start, axis, free: true, orig: new Map([...edit.free].map(j => [j, P[j]])), cur: new Map(), droneOf: new Map([...edit.free].map(j => [j, j])) };
+    controls.enabled = false; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing"; return; }
+  edit.free.clear();
+  if (g.fid !== selectedId) select(g.fid, false);
+  const f = sel(), k = g.map[i]; t = g.t0 + editTau(f) + 1e-4;
+  if (e.shiftKey) { edit.sel.has(k) ? edit.sel.delete(k) : edit.sel.add(k); renderInspector(); return; }
+  if (!edit.sel.has(k)) { edit.sel.clear(); edit.sel.add(k); }
+  if (!ray.ray.intersectPlane(plane, start)) return;
+  const P = spotsNow(f), droneOf = new Map(g.map.map((spot, d) => [spot, d]));
+  edit.drag = { plane, start, axis, orig: new Map([...edit.sel].map(j => [j, P[j]])), cur: new Map(), droneOf };
+  controls.enabled = false; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing"; renderInspector();
+}, true);
+function dragMove() {
+  const d = edit.drag, cur = new THREE.Vector3(); if (!ray.ray.intersectPlane(d.plane, cur)) return;
+  const delta = T2S(cur.sub(d.start)); delta[d.axis] = 0;
+  const single = d.orig.size === 1, sn = (x) => Math.round(x * 10) / 10;
+  if (edit.snap && !single) for (let q = 0; q < 3; q++) delta[q] = sn(delta[q]);
+  for (const [j, o] of d.orig) { let p = [o[0] + delta[0], o[1] + delta[1], o[2] + delta[2]];
+    if (edit.snap && single) p = p.map((x, q) => q === d.axis ? x : sn(x)); d.cur.set(j, clampArea(p)); }
+  if (single) { const [j] = d.orig.keys(), p = d.cur.get(j); ["eX", "eY", "eZ"].forEach((id, q) => { const el = $(id); if (el) el.value = p[q].toFixed(2); }); }
+}
+canvas.addEventListener("pointerup", () => {
+  if (tab === "lights" && !edit.drag) renderLights();
+  if (!edit.drag) return; const d = edit.drag, f = sel(); edit.drag = null; controls.enabled = true; canvas.style.cursor = "";
+  if (d.free) { if (d.cur.size) createPose(t, d.cur); return; }
+  if (d.cur.size && f) { writeWorld(f, d.cur); commit(); rebuildAll(); } else renderInspector();
+});
+function nudge(dx, dy, dz) { const f = sel(); if (!f || !edit.sel.size) return; const P = spotsNow(f), ch = new Map();
+  for (const j of edit.sel) ch.set(j, clampArea([P[j][0] + dx, P[j][1] + dy, P[j][2] + dz])); writeWorld(f, ch); commit(); rebuildAll(); }
+
+const toHex = (rgb) => "#" + rgb.map(v => v.toString(16).padStart(2, "0")).join("");
+function createPose(at, over) { // a hand-placed formation made from where every drone is at this moment, with dragged drones moved
+  const tkEnd = compiled.segs[0].t1; at = Math.max(Math.round(at * 10) / 10, up1(tkEnd + 0.5));
+  const P = positionsAt(compiled, at).map((p, i) => over.get(i) || p).map(p => [p[0], p[1], Math.max(0.2, p[2])]);
+  const c = [0, 1, 2].map(q => +(P.reduce((a, p) => a + p[q], 0) / P.length).toFixed(2));
+  const idx = compiled.segs.filter(g => g.kind === "hold" && g.t0 < at).length;
+  const f = { id: uid(), name: "Pose " + fmt(at), shape: "custom", plane: "flat", size: 1, cx: c[0], cy: c[1], cz: c[2], rot: 0, start: at, hold: 1,
+    color: toHex(colorAt(compiled, at)), points: P.map(p => [p[0] - c[0], p[1] - c[1], p[2] - c[2]].map(r3)) };
+  show.formations.splice(idx, 0, f); compile(show, { fit: "push", from: idx + 1 });
+  selectedId = f.id; edit.sel = new Set(over.keys()); edit.free.clear(); t = at + 1e-4; commit(); rebuildAll(); select(f.id, false);
+  toast(`Saved the drones' positions as "${f.name}". Keep dragging to adjust it, or scrub on and drag again.`);
+}
+
+// Hand-placement bar, just above the timeline; it follows the playhead.
+function placeBarHtml(f) {
+  const snap = `<label class="pb-chk"><input type="checkbox" id="eSnap" ${edit.snap ? "checked" : ""}> Snap 10 cm</label>`;
+  const g = activeHold(), inside = f && g && g.fid === f.id;
+  if (!f || !inside) {
+    const hint = activeHold() ? `Drag any drone to move it.` : `No formation at this moment: drag any drone and its new position is saved as a pose at ${fmt(t)}.`;
+    return `<span class="pb-title">Hand placement</span><span class="pb-hint">${hint}</span><span class="pb-sep"></span>${snap}`;
+  }
+  const tau = editTau(f), k = tau < 0.05 ? null : keyAt(f, tau), keys = (f.keys || []).slice().sort((x, y) => x.t - y.t), one = edit.sel.size === 1 ? [...edit.sel][0] : -1;
+  const P = one >= 0 ? spotsNow(f) : null, prevEase = k ? (keys[keys.indexOf(k) - 1] || { ease: f.ease0 || "smooth" }).ease : "smooth";
+  const small = (id, v, lbl, unit) => `<span class="pb-num ${lbl.length > 1 ? "wide" : ""}" title="${lbl}"><i>${lbl}</i><input class="inp num" id="${id}" type="number" step="0.1" value="${(+v).toFixed(2)}" aria-label="${lbl}">${unit ? `<em>${unit}</em>` : ""}</span>`;
+  return `<span class="pb-title" title="${esc(f.name)}">${esc(f.name)} · <span class="num">${tau.toFixed(1)} s</span></span>
+    <span class="pb-group" title="${tau < 0.05 ? "At 0 s, dragging a drone changes the formation's shape" : k ? "On a keyframe: dragging a drone updates it" : "Dragging a drone here adds a keyframe"}">
+      <button class="chip" data-kt="0" aria-pressed="${tau < 0.05}">0 s · shape</button>
+      ${keys.map(x => `<button class="chip" data-kt="${x.t}" aria-pressed="${!!(k && k.id === x.id)}">${x.t.toFixed(1)} s</button>`).join("")}
+      ${tau >= 0.05 && !k ? `<button class="chip add" id="kAdd">+ Keyframe at ${tau.toFixed(1)} s</button>` : ""}
+      ${k ? `${small("kT", k.t, "Time", "s")}<button class="btn small ghost" id="kDel">Delete keyframe</button>` : ""}</span>
+    <span class="pb-sep"></span>
+    <span class="pb-group"><span class="pb-lbl">Paths</span><span class="seg pb-seg"><button id="pCurve" aria-pressed="${f.path !== "straight"}">Smooth curves</button><button id="pStraight" aria-pressed="${f.path === "straight"}">Straight lines</button></span>
+      ${f.path === "straight" && k ? `<span class="pb-lbl">Arrive</span><select class="inp pb-sel" id="kEase">${[["smooth", "Smoothly"], ["linear", "Steadily"], ["in", "Speeding up"], ["out", "Slowing down"]].map(([v, l]) => `<option value="${v}" ${prevEase === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}</span>
+    <span class="pb-sep"></span>
+    ${edit.sel.size ? `<span class="pb-group"><span class="pb-lbl">${edit.sel.size === 1 ? "Drone " + (g.map.indexOf(one) + 1) : edit.sel.size + " drones selected"}</span>
+      ${one >= 0 ? small("eX", P[one][0], "X", "") + small("eY", P[one][1], "Y", "") + small("eZ", P[one][2], "Z", "") : ""}
+      <button class="btn small" data-addm="bob">Rise and fall</button><button class="btn small" data-addm="spin">Spin</button><button class="btn small" data-addm="wave">Wave</button>
+      <button class="btn small ghost" id="eNone">Clear</button></span><span class="pb-sep"></span>`
+      : `<button class="btn small ghost" id="eAll">Select all drones</button>`}
+    ${snap}`;
+}
+function bindPlaceBar(f) {
+  const B = $("placeBar"); $("eSnap").onchange = () => { edit.snap = $("eSnap").checked; };
+  if (!f) return;
+  const keys = (f.keys || []).slice().sort((x, y) => x.t - y.t), k = keyAt(f, editTau(f)), one = edit.sel.size === 1 ? [...edit.sel][0] : -1;
+  if ($("eAll")) $("eAll").onclick = () => { for (let q = 0; q < compiled.N; q++) edit.sel.add(q); refreshPlaceBar(true); };
+  if ($("eNone")) $("eNone").onclick = () => { edit.sel.clear(); refreshPlaceBar(true); };
+  B.querySelectorAll("[data-kt]").forEach(c => c.onclick = () => { playing = false; updatePlay(); t = holdOf(f).t0 + parseFloat(c.dataset.kt) + 1e-4; refreshPlaceBar(true); });
+  if ($("kAdd")) $("kAdd").onclick = () => { writeWorld(f, new Map()); commit(); rebuildAll(); };
+  if ($("kDel")) $("kDel").onclick = () => { f.keys = f.keys.filter(x => x.id !== k.id); commit(); rebuildAll(); toast("Deleted the keyframe", "Undo", undo); };
+  if ($("kT")) $("kT").addEventListener("change", () => { const v = parseFloat($("kT").value); if (!isFinite(v)) return; k.t = Math.round(Math.max(0.1, Math.min(f.hold, v)) * 10) / 10;
+    f.keys.sort((x, y) => x.t - y.t); t = holdOf(f).t0 + k.t + 1e-4; commit(); rebuildAll(); });
+  if ($("kEase")) $("kEase").onchange = () => { const i = keys.indexOf(k), v = $("kEase").value; if (i === 0) f.ease0 = v; else keys[i - 1].ease = v; commit(); rebuildAll(); };
+  if ($("pCurve")) { $("pCurve").onclick = () => { f.path = "curve"; commit(); rebuildAll(); }; $("pStraight").onclick = () => { f.path = "straight"; commit(); rebuildAll(); }; }
+  B.querySelectorAll("[data-addm]").forEach(b => b.onclick = () => { const spots = [...edit.sel].sort((x, y) => x - y); edit.sel.clear(); addMotion(f, b.dataset.addm, spots); });
+  if (one >= 0 && $("eX")) ["eX", "eY", "eZ"].forEach((id, q) => $(id).addEventListener("change", () => { const v = parseFloat($(id).value); if (!isFinite(v)) return;
+    const p = spotsNow(f)[one].slice(); p[q] = v; writeWorld(f, new Map([[one, clampArea(p)]])); commit(); rebuildAll(); }));
+}
+function refreshPlaceBar(force) { // keep the bar in step with the playhead without disturbing an input being typed in
+  const f = sel(), B = $("placeBar"); if (!B || edit.drag) return;
+  if (B.contains(document.activeElement) && document.activeElement.tagName === "INPUT" && document.activeElement.type === "number" && !force) return;
+  const g = activeHold(), key = (g ? g.fid : "none") + (f ? f.id + editTau(f) : "-") + (f && g && g.fid === f.id ? "" : "x") + edit.sel.size + (f ? f.path : "") + (f ? (f.keys || []).length : "");
+  if (!force && key === edit.lastTau) return; edit.lastTau = key;
+  B.innerHTML = placeBarHtml(f); bindPlaceBar(f);
+}
+
+// ---------- Storyboard ----------
+function renderStory() {
+  const ul = $("sbList"); const holds = compiled.segs.filter(g => g.kind === "hold"), moves = compiled.segs.filter(g => g.kind === "move" && g.fid);
+  const land = compiled.segs.find(g => g.kind === "land"), tk = compiled.segs[0];
+  let h = `<li class="sb-item fixed"><span class="sw" style="background:#fff;opacity:.6"></span><span class="nm">Takeoff</span><span class="tm num">${fmt(0)}</span></li>`;
+  show.formations.forEach((f, i) => {
+    const m = moves[i], hd = holds[i], bad = hd && hd.spacing < show.settings.minSpacing - 1e-6;
+    const has = m ? Math.max(0, f.start - m.t0) : 0;
+    h += `<li class="sb-gap num ${m && (m.short || m.conflict) ? "short" : ""}">${m ? (m.short ? `Too fast: needs ${m.base.toFixed(1)} s, has ${has.toFixed(1)} s` : m.conflict ? `Paths too close · try ${m.need.toFixed(1)} s` : `${(m.t1 - m.t0).toFixed(1)} s transition`) : ""}</li>`;
+    h += `<li class="sb-item ${f.id === selectedId ? "sel" : ""}" data-id="${f.id}" tabindex="0"><span class="sw" style="background:${f.color}"></span>
+      <span class="nm">${esc(f.name)}${bad ? '<span class="warnmark">spacing</span>' : ""}</span><span class="tm num">${fmt(hd.t0)}</span></li>`;
+  });
+  const hv = compiled.segs.find(g => g.kind === "hover");
+  if (hv) h += `<li class="sb-item fixed"><span class="sw" style="background:transparent;border:1px dashed var(--muted)"></span><span class="nm">Extra time · hover</span><span class="tm num">${fmt(hv.t0)}</span></li>`;
+  h += `<li class="sb-item fixed"><span class="sw" style="background:#fff;opacity:.6"></span><span class="nm">Return &amp; land</span><span class="tm num">${fmt(land.t0 - (land.t0 - compiled.segs[compiled.segs.length - 2].t0))}</span></li>`;
+  ul.innerHTML = h;
+  $("droneCountLbl").textContent = compiled.N + " drones";
+  const i = show.formations.findIndex(f => f.id === selectedId);
+  $("dupBtn").disabled = $("delBtn").disabled = i < 0; $("upBtn").disabled = i <= 0; $("downBtn").disabled = i < 0 || i >= show.formations.length - 1;
+  $("undoBtn").disabled = !history.length;
+}
+$("sbList").addEventListener("click", (e) => { const li = e.target.closest("[data-id]"); if (!li) return; select(li.dataset.id, true); });
+$("sbList").addEventListener("keydown", (e) => { if (e.key === "Enter") { const li = e.target.closest("[data-id]"); if (li) select(li.dataset.id, true); } });
+function select(id, jump) {
+  if (id !== selectedId) edit.sel.clear();
+  selectedId = id; if (jump || tab !== "lights") tab = "form"; // picking drones in 3D keeps the Lights tab open
+  if (jump) { const h = compiled.segs.find(g => g.kind === "hold" && g.fid === id); if (h) t = h.t0 + 0.001; }
+  renderStory(); renderInspector(); renderTimeline(); buildGhost();
+}
+function shapeIcon(shape) {
+  const f = { shape, plane: "vertical", size: 1, cx: 0, cy: 0, cz: 0, rot: 0 }, pts = formationPoints(f, SHAPES[shape].dim === 3 ? 30 : 16);
+  const proj = pts.map(([x, y, z]) => SHAPES[shape].dim === 3 ? [x + y * .35, z - y * .2] : [x, z]);
+  return `<svg viewBox="-0.75 -0.65 1.5 1.3" aria-hidden="true">${proj.map(([x, y]) => `<circle cx="${x.toFixed(3)}" cy="${(-y).toFixed(3)}" r="0.05" fill="currentColor"/>`).join("")}</svg>`;
+}
+const CAPTURE_ICON = `<svg viewBox="-0.75 -0.65 1.5 1.3" aria-hidden="true">${[[-.5,.3],[-.2,.45],[.25,.35],[.5,.1],[-.35,-.1],[.05,0],[.35,-.3],[-.1,-.4],[-.55,-.45]].map(([x, y]) => `<circle cx="${x}" cy="${-y}" r="0.06" fill="currentColor"/>`).join("")}<rect x="-0.7" y="-0.6" width="1.4" height="1.2" fill="none" stroke="currentColor" stroke-width="0.04" stroke-dasharray="0.1 0.08"/></svg>`;
+$("picker").innerHTML = `<button class="shape-tile" data-shape="capture" title="A hand-placed formation starting from where the drones are at the playhead">${CAPTURE_ICON}Current positions</button>` +
+  Object.keys(SHAPES).filter(k => !SHAPES[k].hidden).map(k => `<button class="shape-tile" data-shape="${k}">${shapeIcon(k)}${SHAPES[k].label}</button>`).join("");
+$("addBtn").onclick = () => { $("picker").hidden = !$("picker").hidden; };
+const PALETTE = ["#a596ff", "#4fd1c5", "#ff5c7a", "#f0b54a", "#6fb6ff", "#9be36a", "#ff8f5a", "#e7e7f5"];
+$("picker").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-shape]"); if (!b) return; const shape = b.dataset.shape;
+  const i = show.formations.findIndex(f => f.id === selectedId), at = i < 0 ? show.formations.length : i + 1;
+  const prev = show.formations[at - 1], st = show.settings;
+  const f = { id: uid(), name: SHAPES[shape] ? SHAPES[shape].label : "", shape, plane: shape !== "capture" && SHAPES[shape].dim === 3 ? "flat" : "vertical", size: Math.min(2.6, st.areaZ - 0.6, st.areaX - 0.6),
+    cx: 0, cy: 0, cz: +(st.areaZ / 2).toFixed(2), rot: 0, start: prev ? prev.start + prev.hold : 0, hold: 3, color: PALETTE[show.formations.length % PALETTE.length] };
+  if (shape === "capture") { // freeze the drones where they are now into a hand-placed formation
+    const P = positionsAt(compiled, t), c = [0, 1, 2].map(q => +(P.reduce((a, p) => a + p[q], 0) / P.length).toFixed(2));
+    if (c[2] < 0.5) c[2] = 0.5;
+    Object.assign(f, { shape: "custom", name: "Captured " + fmt(t), cx: c[0], cy: c[1], cz: c[2], plane: "flat", size: 1,
+      points: P.map(p => [p[0] - c[0], p[1] - c[1], Math.max(0.2, p[2]) - c[2]].map(v => +v.toFixed(3))) });
+  }
+  show.formations.splice(at, 0, f); compile(show, { fit: "push", from: at });
+  $("picker").hidden = true; selectedId = f.id; commit(); rebuildAll(); select(f.id, true);
+});
+$("dupBtn").onclick = () => { const i = show.formations.findIndex(f => f.id === selectedId); if (i < 0) return;
+  const f = { ...show.formations[i], id: uid(), name: show.formations[i].name + " copy", start: show.formations[i].start + show.formations[i].hold };
+  show.formations.splice(i + 1, 0, f); compile(show, { fit: "push", from: i + 1 }); commit(); rebuildAll(); select(f.id, true); };
+$("delBtn").onclick = () => { const i = show.formations.findIndex(f => f.id === selectedId); if (i < 0) return;
+  edit.sel.clear(); const name = show.formations[i].name; show.formations.splice(i, 1); selectedId = (show.formations[i] || show.formations[i - 1] || {}).id || null;
+  commit(); rebuildAll(); toast(`Deleted ${name}`, "Undo", undo); };
+function moveF(dir) { const i = show.formations.findIndex(f => f.id === selectedId), j = i + dir; if (i < 0 || j < 0 || j >= show.formations.length) return;
+  const A = show.formations[i], B = show.formations[j]; [A.start, B.start] = [B.start, A.start]; show.formations[i] = B; show.formations[j] = A;
+  compile(show, { fit: "push", from: Math.min(i, j) }); commit(); rebuildAll(); }
+$("upBtn").onclick = () => moveF(-1); $("downBtn").onclick = () => moveF(1);
+$("tightenBtn").onclick = () => { compile(show, { fit: "tighten" }); commit(); rebuildAll(); toast("Every transition now uses the fastest safe time"); };
+
+// ---------- Inspector ----------
+function num(id, val, unit, step = 0.1, axis) {
+  return `<div class="unit ${axis ? "axis" : ""}">${axis ? `<span class="ax">${axis}</span>` : ""}<input class="inp num" id="${id}" type="number" step="${step}" value="${+(+val).toFixed(2)}" aria-label="${axis || id}">${unit ? `<i>${unit}</i>` : ""}</div>`;
+}
+function renderInspector() {
+  refreshPlaceBar(true);
+  $("tabForm").setAttribute("aria-selected", tab === "form"); $("tabLights").setAttribute("aria-selected", tab === "lights"); $("tabSafety").setAttribute("aria-selected", tab === "safety");
+  const body = $("inspBody");
+  if (tab === "safety") { renderSafety(); return; }
+  if (tab === "lights") { renderLights(); return; }
+  const f = sel();
+  if (!f) {
+    const st = show.settings;
+    body.innerHTML = `<div class="form summary"><span class="eyebrow">Show</span><dl class="num">
+      <dt>Length</dt><dd>${fmt(compiled.duration)}</dd><dt>Drones</dt><dd>${st.droneCount}</dd><dt>Formations</dt><dd>${show.formations.length}</dd>
+      <dt>Flight area</dt><dd>${st.areaX} × ${st.areaY} × ${st.areaZ} m</dd></dl>
+      <p class="note info"><span class="dot"></span>Select a formation in the storyboard, or add one to start designing.</p></div>`;
+    return;
+  }
+  const custom = f.shape === "custom", is3 = SHAPES[f.shape].dim === 3, hold = compiled.segs.find(g => g.kind === "hold" && g.fid === f.id), move = compiled.segs.find(g => g.kind === "move" && g.fid === f.id);
+  const ms = show.settings.minSpacing, sp = hold ? hold.spacing : Infinity;
+  body.innerHTML = `<div class="form">
+    <div class="field"><label for="fName">Name</label><input class="inp" id="fName" value="${esc(f.name)}"></div>
+    <div class="field"><label for="fShape">Shape</label><select class="inp" id="fShape">${Object.keys(SHAPES).filter(k => !SHAPES[k].hidden || k === f.shape).map(k => `<option value="${k}" ${k === f.shape ? "selected" : ""}>${SHAPES[k].label}</option>`).join("")}</select></div>
+    ${custom ? "" : `<div class="field"><span class="lbl">Orientation</span><div class="seg">
+      <button id="plV" aria-pressed="${!is3 && f.plane !== "flat"}" ${is3 ? "disabled" : ""}>Facing audience</button>
+      <button id="plF" aria-pressed="${!is3 && f.plane === "flat"}" ${is3 ? "disabled" : ""}>Flat</button></div></div>`}
+    <div class="row c2">${custom ? "" : `<div class="field"><label for="fSize">Size</label>${num("fSize", f.size, "m")}</div>`}
+      <div class="field"><label for="fRot" title="Rotates the whole formation around its centre, like turning it on a lazy Susan. Add Spin under Motion to keep it turning.">Rotate</label>${num("fRot", f.rot, "°", 5)}</div></div>
+    <div class="field"><span class="lbl">Centre position</span><div class="row c3">${num("fX", f.cx, "", .1, "X")}${num("fY", f.cy, "", .1, "Y")}${num("fZ", f.cz, "", .1, "Z")}</div></div>
+    <div class="row c2"><div class="field"><label for="fStart">Arrive at</label>${num("fStart", hold ? hold.t0 : f.start, "s")}</div>
+      <div class="field"><label for="fHold">Hold for</label>${num("fHold", f.hold, "s")}</div></div>
+    <div class="field"><label for="fColor" title="The colour drones show while in this formation. Light effects in the Lights tab play on top.">Base light colour</label><input class="inp" type="color" id="fColor" value="${f.color}"></div>
+    ${motionSection(f)}
+    <p class="note ${sp < ms - 1e-6 ? "bad" : "ok"}"><span class="dot"></span><span>Closest drones in this formation: <b class="num">${isFinite(sp) ? sp.toFixed(2) : "–"} m</b> (minimum ${ms} m)${sp < ms - 1e-6 ? ". Make it larger or use fewer drones." : ""}</span></p>
+    ${move ? `<p class="note ${move.short || move.conflict ? "bad" : "info"}"><span class="dot"></span><span>Fastest safe arrival: <b class="num">${move.need.toFixed(1)} s</b> after the previous formation (longest path ${move.dmax.toFixed(2)} m).
+      ${move.short ? " The drones would have to fly too fast. Arrive later, or use Tighten timing." : move.conflict ? " Some paths pass too close even with staggered departures. Arrive later, move the formation, or change its shape." : move.maxDelay > 0.05 ? ` Some drones wait up to ${move.maxDelay.toFixed(1)} s before leaving so their paths stay apart.` : ""}</span></p>` : ""}
+  </div>`;
+  const live = () => { compiled = compile(show); refreshLight(); saveShow(); };
+  bindMotion(f, live);
+  const bind = (id, key, conv = parseFloat) => { const el = $(id); el.addEventListener("input", () => { const v = conv(el.value); if (conv === parseFloat && !isFinite(v)) return; f[key] = v; live(); }); el.addEventListener("change", () => { commit(); rebuildAll(); }); };
+  bind("fName", "name", String); if (!custom) bind("fSize", "size"); bind("fRot", "rot"); bind("fX", "cx"); bind("fY", "cy"); bind("fZ", "cz"); bind("fStart", "start"); bind("fColor", "color", String);
+  $("fHold").addEventListener("input", () => { const v = parseFloat($("fHold").value); if (isFinite(v) && v >= 0) { f.hold = v; live(); } });
+  $("fHold").addEventListener("change", () => { commit(); rebuildAll(); });
+  $("fShape").onchange = () => { f.shape = $("fShape").value; if (SHAPES[f.shape].dim === 3) f.plane = "flat"; commit(); rebuildAll(); };
+  if (!custom) { $("plV").onclick = () => { f.plane = "vertical"; commit(); rebuildAll(); }; $("plF").onclick = () => { f.plane = "flat"; commit(); rebuildAll(); }; }
+
+}
+const MOTION_NAMES = { spin: "Spin", bob: "Rise and fall", pulse: "Pulse" };
+function addMotion(f, kind, spots) {
+  f.motion = f.motion || [];
+  const m = kind === "spin" ? { id: uid(), type: "spin", turns: 0.5, axis: "z", smooth: true }
+    : kind === "pulse" ? { id: uid(), type: "pulse", amount: 0.2, cycles: 1 }
+    : { id: uid(), type: "bob", amp: 0.4, cycles: 1, ripple: kind === "wave" ? 1 : 0 };
+  m.spots = spots && spots.length ? spots : "all"; f.motion.push(m); commit(); rebuildAll(); toast(`Added ${MOTION_NAMES[m.type].toLowerCase()} to ${f.name}`);
+}
+function motionPeak(f, m) { // rough top speed this effect adds, to warn before the full check runs
+  const N = compiled.N, P = localPoints3(f, N), S = spotsOf(m, N), H = Math.max(f.hold, 0.1);
+  let r = 0; P.forEach((p, i) => { if (S && !S.has(i)) return; const ax = m.axis || "z"; r = Math.max(r, ax === "z" ? Math.hypot(p[0], p[1]) : ax === "y" ? Math.hypot(p[0], p[2]) : Math.hypot(p[1], p[2]), Math.hypot(...p)); });
+  if (m.type === "spin") return 2 * Math.PI * r * Math.abs(m.turns || 0) / H * (m.smooth === false ? 1 : 1.875);
+  if (m.type === "bob") return Math.abs(m.amp || 0) * Math.PI * (m.cycles || 1) / H * (m.ripple ? 1.6 : 1);
+  return Math.abs(m.amount || 0) * r * Math.PI * (m.cycles || 1) / H;
+}
+function spotsSelect(m) {
+  const list = Array.isArray(m.spots);
+  return `<select class="inp" data-mf="spots">${list ? `<option value="list" selected>Spots ${m.spots.map(k => k + 1).join(", ")}</option>` : ""}
+    <option value="all" ${m.spots === "all" || !m.spots ? "selected" : ""}>All drones</option><option value="alternate" ${m.spots === "alternate" ? "selected" : ""}>Every other drone</option></select>`;
+}
+function motionSection(f) {
+  const ms = f.motion || [], keys = f.keys || [], vmax = show.settings.maxSpeed;
+  const card = (m) => { const pk = motionPeak(f, m), fast = pk > vmax;
+    let body = "";
+    if (m.type === "spin") body = `<div class="row c2"><div class="field"><label>Turns</label><div class="unit"><input class="inp num" data-mf="turns" type="number" step="0.25" value="${m.turns}"></div></div>
+      <div class="field"><label>Around</label><select class="inp" data-mf="axis"><option value="z" ${m.axis === "z" ? "selected" : ""}>Vertical axis</option><option value="y" ${m.axis === "y" ? "selected" : ""}>Like a wheel</option><option value="x" ${m.axis === "x" ? "selected" : ""}>Side to side</option></select></div></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:12px"><input type="checkbox" data-mf="smooth" ${m.smooth !== false ? "checked" : ""}> Start and stop gently</label>`;
+    else if (m.type === "bob") body = `<div class="row c3"><div class="field"><label>Height</label><div class="unit"><input class="inp num" data-mf="amp" type="number" step="0.1" value="${m.amp}"><i>m</i></div></div>
+      <div class="field"><label>Times</label><div class="unit"><input class="inp num" data-mf="cycles" type="number" step="1" min="1" value="${m.cycles}"></div></div>
+      <div class="field"><label>Ripple</label><div class="unit"><input class="inp num" data-mf="ripple" type="number" step="0.25" min="0" value="${m.ripple || 0}"></div></div></div>`;
+    else body = `<div class="row c2"><div class="field"><label>Grow by</label><div class="unit"><input class="inp num" data-mf="amountPct" type="number" step="5" value="${Math.round((m.amount || 0) * 100)}"><i>%</i></div></div>
+      <div class="field"><label>Times</label><div class="unit"><input class="inp num" data-mf="cycles" type="number" step="1" min="1" value="${m.cycles}"></div></div></div>`;
+    return `<div class="mcard" data-mid="${m.id}"><header>${MOTION_NAMES[m.type]}<button class="btn small ghost" data-mdel="1" aria-label="Remove ${MOTION_NAMES[m.type]}">Remove</button></header>
+      ${body}<div class="field"><label>Applies to</label>${spotsSelect(m)}</div>
+      <p class="note ${fast ? "bad" : "info"}" style="margin:0"><span class="dot"></span><span>Adds up to about <b class="num">${pk.toFixed(2)} m/s</b>${fast ? `, faster than the ${vmax} m/s limit. Use fewer turns or a longer hold.` : ""}</span></p></div>`; };
+  return `<div class="field"><span class="lbl">Motion while in this formation</span>
+    ${ms.map(card).join("")}
+    <select class="inp" id="addMotion"><option value="">+ Add motion…</option><option value="spin">Spin</option><option value="bob">Rise and fall</option><option value="wave">Wave (ripples through the drones)</option><option value="pulse">Pulse (grow and shrink)</option></select>
+</div>`;
+}
+function bindMotion(f, live) {
+  const B = $("inspBody");
+  $("addMotion").onchange = () => { const v = $("addMotion").value; if (v) addMotion(f, v); };
+  B.querySelectorAll(".mcard[data-mid]").forEach(card => {
+    const m = f.motion.find(x => x.id === card.dataset.mid);
+    card.querySelector("[data-mdel]").onclick = () => { f.motion = f.motion.filter(x => x !== m); commit(); rebuildAll(); toast(`Removed ${MOTION_NAMES[m.type].toLowerCase()}`, "Undo", undo); };
+    card.querySelectorAll("[data-mf]").forEach(el => {
+      const k = el.dataset.mf, apply = () => {
+        if (k === "spots") { if (el.value !== "list") m.spots = el.value; }
+        else if (k === "smooth") m.smooth = el.checked;
+        else if (k === "axis") m.axis = el.value;
+        else { const v = parseFloat(el.value); if (!isFinite(v)) return; if (k === "amountPct") m.amount = v / 100; else m[k] = k === "cycles" ? Math.max(1, Math.round(v)) : v; }
+      };
+      el.addEventListener("input", () => { apply(); live(); buildGhost(); });
+      el.addEventListener("change", () => { apply(); commit(); rebuildAll(); });
+    });
+  });
+}
+const ISSUE_TXT = { close: "Too close", speed: "Too fast", accel: "Accelerates too hard", fence: "Leaves the flight area" };
+function renderSafety() {
+  const st = show.settings, body = $("inspBody");
+  if (!issues.length) { body.innerHTML = `<div class="form"><p class="note ok"><span class="dot"></span><span class="empty-ok">No problems found.</span></p>
+    <p class="note info"><span class="dot"></span><span>Checked every 0.05 s: drones stay ${st.minSpacing} m apart, under ${st.maxSpeed} m/s and ${st.maxAccel} m/s², inside the ${st.areaX} × ${st.areaY} × ${st.areaZ} m area.</span></p></div>`; return; }
+  body.innerHTML = `<div class="form"><span class="eyebrow">${issues.length} problem${issues.length > 1 ? "s" : ""} · click to jump</span>` + issues.slice(0, 150).map((s, k) => {
+    const who = s.drones.map(d => "Drone " + (d + 1)).join(" & ");
+    const val = s.type === "close" ? ` · ${s.val.toFixed(2)} m apart` : s.type === "speed" ? ` · ${s.val.toFixed(2)} m/s` : s.type === "accel" ? ` · ${s.val.toFixed(2)} m/s²` : "";
+    return `<button class="issue" data-k="${k}"><div><b>${ISSUE_TXT[s.type]}</b>: ${who}</div><div class="t num">${fmt(s.t0)}${s.t1 > s.t0 ? "–" + fmt(s.t1) : ""}${val}</div></button>`; }).join("") + `</div>`;
+  body.querySelectorAll(".issue").forEach(b => b.onclick = () => { t = issues[+b.dataset.k].t0; playing = false; updatePlay(); });
+}
+$("tabForm").onclick = () => { tab = "form"; renderInspector(); }; $("tabLights").onclick = () => { tab = "lights"; renderInspector(); }; $("tabSafety").onclick = () => { tab = "safety"; renderInspector(); };
+
+// ---------- Safety (debounced full check) ----------
+let checkTimer = 0;
+function scheduleCheck() { $("safetyText").textContent = "Checking…"; clearTimeout(checkTimer); checkTimer = setTimeout(() => {
+  issues = checkShow(compiled, show.settings); const pill = $("safetyPill");
+  pill.className = "pill " + (issues.length ? "bad" : "ok"); $("safetyText").textContent = issues.length ? issues.length + " safety problem" + (issues.length > 1 ? "s" : "") : "Show is safe";
+  renderIssueMarks(); if (tab === "safety") renderSafety(); }, 250); }
+function showSafety() { // open the Safety tab, bring it on screen, and point at the first problem
+  tab = "safety"; renderInspector();
+  const panel = document.querySelector(".insp"), body = $("inspBody"), reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  body.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  panel.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  panel.classList.remove("flash"); void panel.offsetWidth; panel.classList.add("flash");
+  const first = body.querySelector(".issue"); if (first) setTimeout(() => first.focus({ preventScroll: true }), reduce ? 0 : 350);
+}
+$("safetyPill").setAttribute("role", "button"); $("safetyPill").tabIndex = 0; $("safetyPill").title = "Show the safety problems";
+$("safetyPill").onclick = showSafety; $("safetyPill").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showSafety(); } };
+
+// ---------- Lights tab ----------
+let selLight = null;
+const lightById = (id) => (show.lights || []).find(L => L.id === id) || null;
+function swatchCss(L) {
+  switch (L.type) {
+    case "solid": return L.color;
+    case "gradient": return `linear-gradient(90deg, ${L.flip ? L.color2 : L.color}, ${L.flip ? L.color : L.color2})`;
+    case "rainbow": return "linear-gradient(90deg,#ff5a5a,#ffd25a,#6af07a,#5ad2ff,#8a6aff,#ff5ad2)";
+    case "pulse": { const c = L.keep ? "#c9d1de" : L.color; return `linear-gradient(90deg, ${c}, #1a2231 50%, ${c})`; }
+    case "blink": { const c = L.keep ? "#c9d1de" : L.color; return `repeating-linear-gradient(90deg, ${c} 0 7px, #1a2231 7px 14px)`; }
+    case "chase": return `linear-gradient(90deg, #1a2231 0 25%, ${L.color} 50%, #1a2231 75%)`;
+    case "sparkle": return `radial-gradient(circle at 18% 40%, ${L.color} 0 1.5px, transparent 2.5px), radial-gradient(circle at 52% 72%, ${L.color} 0 1.5px, transparent 2.5px), radial-gradient(circle at 83% 30%, ${L.color} 0 1.5px, transparent 2.5px), #1a2231`;
+    case "off": return "#05070b";
+  }
+  return "#888";
+}
+function selectedDrones() { // drone numbers picked in the 3D view, whichever way they were picked
+  if (edit.free.size) return [...edit.free].sort((a, b) => a - b);
+  const g = activeHold(); if (!g || g.fid !== selectedId || !edit.sel.size) return [];
+  return g.map.map((spot, d) => edit.sel.has(spot) ? d : -1).filter(d => d >= 0);
+}
+const dronesLabel = (L) => L.drones === "alternate" ? "Every other drone" : Array.isArray(L.drones) ? (L.drones.length === 1 ? "Drone " : "Drones ") + L.drones.map(d => d + 1).join(", ") : "All drones";
+function addLight(type) {
+  const L = lightDefaults(type, t, compiled.duration), picked = selectedDrones(); if (picked.length) L.drones = picked;
+  show.lights.push(L); selLight = L.id; tab = "lights"; commit(); renderTimeline(); renderInspector();
+  toast(`Added ${LIGHT_TYPES[type].toLowerCase()} at ${fmt(L.t0)}${picked.length ? " for the selected drones" : ""}`);
+}
+function lf(L, key, label, kind, opts = {}) { // one editor field bound to L[key]
+  const id = "lf_" + key, v = L[key];
+  if (kind === "color") return `<div class="field"><label for="${id}">${label}</label><input class="inp" type="color" id="${id}" data-lf="${key}" data-lk="color" value="${v}"></div>`;
+  if (kind === "bool") return `<label style="display:flex;gap:8px;align-items:center;font-size:12px"><input type="checkbox" id="${id}" data-lf="${key}" data-lk="bool" ${v ? "checked" : ""}> ${label}</label>`;
+  if (kind === "select") return `<div class="field"><label for="${id}">${label}</label><select class="inp" id="${id}" data-lf="${key}" data-lk="str">${Object.entries(opts.choices).map(([k, l]) => `<option value="${k}" ${k === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`;
+  const pct = kind === "pct", val = pct ? Math.round((v ?? 0) * 100) : +(+v).toFixed(2);
+  return `<div class="field"><label for="${id}">${label}</label><div class="unit"><input class="inp num" type="number" id="${id}" data-lf="${key}" data-lk="${kind}" step="${opts.step ?? (pct ? 5 : 0.1)}" min="${opts.min ?? 0}" ${opts.max != null ? `max="${opts.max}"` : ""} value="${val}">${opts.unit || pct ? `<i>${opts.unit || "%"}</i>` : ""}</div></div>`;
+}
+function lightParams(L) {
+  const ax = lf(L, "axis", "Direction", "select", { choices: LIGHT_AXES }), flip = lf(L, "flip", "Reverse direction", "bool");
+  const keepOrColor = `${lf(L, "keep", "Keep each drone's current colour", "bool")}${L.keep ? "" : lf(L, "color", "Colour", "color")}`;
+  const between = lf(L, "between", "Between flashes", "select", { choices: { dark: "Lights off", base: "Formation colour" } });
+  switch (L.type) {
+    case "solid": return lf(L, "color", "Colour", "color");
+    case "gradient": return `<div class="row c2">${lf(L, "color", "From", "color")}${lf(L, "color2", "To", "color")}</div>${ax}${flip}`;
+    case "rainbow": return `${ax}<div class="row c3">${lf(L, "spread", "Rainbows", "num", { step: 0.25 })}${lf(L, "speed", "Cycle speed", "num", { step: 0.05, unit: "/s", min: -10 })}${lf(L, "sat", "Saturation", "pct", { max: 100 })}</div>${flip}`;
+    case "pulse": return `<div class="row c3">${lf(L, "rate", "Pulses", "num", { step: 0.25, unit: "/s", min: 0.05 })}${lf(L, "min", "Dimmest", "pct", { max: 100 })}${lf(L, "ripple", "Ripple", "num", { step: 0.25 })}</div>${keepOrColor}`;
+    case "blink": return `<div class="row c2">${lf(L, "rate", "Flashes", "num", { step: 0.5, unit: "/s", min: 0.1 })}${lf(L, "duty", "Time lit", "pct", { min: 5, max: 95 })}</div>
+      ${lf(L, "pattern", "Pattern", "select", { choices: { together: "All together", alternate: "Alternating", random: "Random" } })}${keepOrColor}`;
+    case "chase": return `${lf(L, "color", "Colour", "color")}${ax}<div class="row c2">${lf(L, "width", "Band width", "pct", { min: 2, max: 100 })}${lf(L, "passes", "Sweeps", "num", { step: 1, min: 1 })}</div>${between}${flip}`;
+    case "sparkle": return `${lf(L, "color", "Colour", "color")}<div class="row c2">${lf(L, "density", "Lit at once", "pct", { min: 1, max: 100 })}${lf(L, "rate", "Twinkles", "num", { step: 0.5, unit: "/s", min: 0.2 })}</div>${between}`;
+    case "off": return `<p class="note info" style="margin:0"><span class="dot"></span><span>Turns the lights off. Use the fade times for a slow fade to dark.</span></p>`;
+  }
+  return "";
+}
+function renderLights() {
+  const body = $("inspBody"), lights = show.lights; if (selLight && !lightById(selLight)) selLight = null;
+  const picked = selectedDrones(), L = lightById(selLight);
+  const add = `<select class="inp" id="addLight"><option value="">+ Add light effect at ${fmt(t)}${picked.length ? ` for ${picked.length} selected drone${picked.length > 1 ? "s" : ""}` : ""}…</option>
+    ${Object.entries(LIGHT_TYPES).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>`;
+  const list = lights.length ? `<div class="llist">${lights.map((x, k) => `<button class="litem ${x.id === selLight ? "sel" : ""}" data-lid="${x.id}"><span class="lsw" style="background:${swatchCss(x)}"></span>
+      <span class="lnm">${esc(x.name)}<small>${esc(dronesLabel(x))}</small></span><span class="num lt">${fmt(x.t0)}–${fmt(x.t0 + x.dur)}</span></button>`).join("")}</div>
+      <p class="note info" style="margin:0"><span class="dot"></span><span>Effects play on top of each formation's colour. When effects overlap, the lower one in the list is drawn on top.</span></p>`
+    : `<div class="mcard"><p class="note info" style="margin:0"><span class="dot"></span><span>No light effects yet. Drones show their formation's colour. Add an effect at the playhead, or start from a few examples.</span></p>
+      <button class="btn small" id="lExample" style="align-self:flex-start">Add example effects</button></div>`;
+  let ed = "";
+  if (L) {
+    const i = lights.indexOf(L);
+    ed = `<div class="mcard" id="lEditor"><header><span>Edit effect</span><span style="display:flex;gap:2px">
+        <button class="btn small ghost" id="lUp" ${i === 0 ? "disabled" : ""} aria-label="Move up in the list">↑</button><button class="btn small ghost" id="lDown" ${i === lights.length - 1 ? "disabled" : ""} aria-label="Move down in the list">↓</button></span></header>
+      <div class="field"><label for="lName">Name</label><input class="inp" id="lName" value="${esc(L.name)}"></div>
+      <div class="field"><label for="lType">Effect</label><select class="inp" id="lType">${Object.entries(LIGHT_TYPES).map(([k, l]) => `<option value="${k}" ${k === L.type ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="row c2">${lf(L, "t0", "Starts at", "num", { unit: "s" })}${lf(L, "dur", "Lasts", "num", { unit: "s", min: 0.1 })}</div>
+      <div class="row c2">${lf(L, "fadeIn", "Fade in", "num", { unit: "s" })}${lf(L, "fadeOut", "Fade out", "num", { unit: "s" })}</div>
+      <div class="field"><label for="lDrones">Applies to</label><select class="inp" id="lDrones">
+        ${Array.isArray(L.drones) ? `<option value="list" selected>${esc(dronesLabel(L))}</option>` : ""}
+        <option value="all" ${L.drones === "all" ? "selected" : ""}>All drones</option><option value="alternate" ${L.drones === "alternate" ? "selected" : ""}>Every other drone</option></select>
+        <button class="btn small" id="lUseSel" style="align-self:flex-start" ${picked.length ? "" : "disabled title='Click drones in the 3D view first'"}>Use selected drones${picked.length ? ` (${picked.length})` : ""}</button></div>
+      <div id="lParams" style="display:flex;flex-direction:column;gap:10px">${lightParams(L)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" id="lJump">Play from here</button><button class="btn small" id="lDup">Duplicate</button><button class="btn small ghost" id="lDel">Delete</button></div></div>`;
+  }
+  body.innerHTML = `<div class="form">${add}${list}${ed}</div>`;
+  $("addLight").onchange = () => { const v = $("addLight").value; if (v) addLight(v); };
+  if ($("lExample")) $("lExample").onclick = () => { show.lights.push(...exampleLights(compiled)); selLight = show.lights[0].id; commit(); renderTimeline(); renderInspector(); toast("Added example light effects", "Undo", undo); };
+  body.querySelectorAll("[data-lid]").forEach(b => b.onclick = () => { selLight = b.dataset.lid; const x = lightById(selLight); playing = false; updatePlay(); t = x.t0 + Math.min(0.5, x.dur / 2); renderTimeline(); renderLights(); });
+  if (!L) return;
+  const live = () => { renderTimeline(); saveShow(); };
+  $("lName").addEventListener("input", () => { L.name = $("lName").value; live(); }); $("lName").addEventListener("change", () => { commit(); renderLights(); });
+  $("lType").onchange = () => { const d = lightDefaults($("lType").value, L.t0, compiled.duration); Object.assign(L, { ...d, id: L.id, t0: L.t0, dur: L.dur, fadeIn: L.fadeIn, fadeOut: L.fadeOut, drones: L.drones,
+      name: Object.values(LIGHT_TYPES).includes(L.name) ? d.name : L.name, color: L.color || d.color }); commit(); renderTimeline(); renderLights(); };
+  $("lDrones").onchange = () => { const v = $("lDrones").value; if (v !== "list") L.drones = v; commit(); renderTimeline(); renderLights(); };
+  $("lUseSel").onclick = () => { L.drones = selectedDrones(); commit(); renderTimeline(); renderLights(); };
+  const bindFields = (root) => root.querySelectorAll("[data-lf]").forEach(el => {
+    const key = el.dataset.lf, kind = el.dataset.lk, apply = () => {
+      if (kind === "bool") L[key] = el.checked; else if (kind === "color" || kind === "str") L[key] = el.value;
+      else { let v = parseFloat(el.value); if (!isFinite(v)) return false; if (kind === "pct") v /= 100; L[key] = v; }
+      if (key === "dur") L.dur = Math.max(0.1, L.dur); if (key === "t0") L.t0 = Math.max(0, L.t0); if (key === "fadeIn" || key === "fadeOut") L[key] = Math.max(0, L[key]);
+      return true; };
+    el.addEventListener("input", () => { if (apply() !== false) live(); });
+    el.addEventListener("change", () => { if (apply() === false) return; commit(); renderTimeline(); if (kind === "bool" || kind === "str") { $("lParams").innerHTML = lightParams(L); bindFields($("lParams")); } });
+  });
+  bindFields($("lEditor"));
+  const move = (d) => { const i = show.lights.indexOf(L), j = i + d; [show.lights[i], show.lights[j]] = [show.lights[j], show.lights[i]]; commit(); renderTimeline(); renderLights(); };
+  $("lUp").onclick = () => move(-1); $("lDown").onclick = () => move(1);
+  $("lJump").onclick = () => { t = L.t0; playing = true; updatePlay(); };
+  $("lDup").onclick = () => { const c = { ...JSON.parse(JSON.stringify(L)), id: uid(), name: L.name + " copy", t0: Math.round((L.t0 + L.dur) * 10) / 10 }; show.lights.splice(show.lights.indexOf(L) + 1, 0, c); selLight = c.id; commit(); renderTimeline(); renderLights(); };
+  $("lDel").onclick = () => { show.lights = show.lights.filter(x => x !== L); selLight = null; commit(); renderTimeline(); renderLights(); toast(`Deleted ${L.name}`, "Undo", undo); };
+}
+
+// ---------- Timeline ----------
+let pps = 10;
+function renderTimeline() {
+  const tl = $("tl"), w = tl.clientWidth || 600, D = compiled.duration; pps = w / D;
+  const steps = [1, 2, 5, 10, 15, 30, 60], step = steps.find(s => s * pps >= 56) || 60;
+  let r = ""; for (let s = 0; s <= D; s += step) r += `<div class="tick" style="left:${s * pps}px">${fmt(s).replace(/\.0$/, "")}</div>`; $("ruler").innerHTML = r;
+  let h = "";
+  for (const g of compiled.segs) {
+    const L = g.t0 * pps, W = Math.max((g.t1 - g.t0) * pps, 2);
+    if (g.kind === "hold") { const f = show.formations.find(x => x.id === g.fid) || {};
+      h += `<div class="blk hold ${g.fid === selectedId ? "sel" : ""}" data-fid="${g.fid}" style="left:${L}px;width:${W}px;background:${g.c0}">${esc(g.label)}${(f.motion || []).length ? '<span class="mflag" title="Has motion">↻</span>' : ""}<span class="grip" data-grip="1"></span></div>`;
+      for (const k of f.keys || []) if (k.t <= f.hold) h += `<span class="kd" data-fid="${g.fid}" data-kt="${k.t}" style="left:${(g.t0 + k.t) * pps}px;top:20px" title="Keyframe at ${k.t.toFixed(1)} s"></span>`; }
+    else if (g.kind === "move") h += `<div class="blk move ${g.short || g.conflict ? "short" : ""}" style="left:${L}px;width:${W}px" title="${esc(g.label)}"></div>`;
+    else h += `<div class="blk fixed ${g.kind === "hover" ? "hover" : ""}" style="left:${L}px;width:${W}px" title="${g.kind === "hover" ? "Extra time: drag drones here to add poses" : ""}">${g.kind === "hover" ? "Extra time" : g.label}</div>`;
+  }
+  $("track").innerHTML = h; renderIssueMarks(); renderLightLane(); renderPlayhead();
+}
+function renderLightLane() { // effects stacked into as many rows as they overlap
+  const rows = [], place = (show.lights || []).map(L => { let r = rows.findIndex(end => end <= L.t0 + 1e-6); if (r < 0) { r = rows.length; rows.push(0); } rows[r] = L.t0 + L.dur; return [L, r]; });
+  const n = Math.max(1, rows.length), rh = 30 / n;
+  $("llane").innerHTML = `${place.length ? "" : '<span class="llabel">Lights · add effects in the Lights tab</span>'}` + place.map(([L, r]) => `<div class="lblk ${L.id === selLight && tab === "lights" ? "sel" : ""}" data-lid="${L.id}"
+    style="left:${L.t0 * pps}px;width:${Math.max(L.dur * pps, 4)}px;top:${r * rh + 2}px;height:${rh - 3}px;background:${swatchCss(L)}" title="${esc(L.name)} · ${fmt(L.t0)}–${fmt(L.t0 + L.dur)}">${rh > 11 ? `<span class="nm">${esc(L.name)}</span>` : ""}<span class="grip" data-lgrip="1"></span></div>`).join("");
+}
+function renderIssueMarks() { $("lane2").innerHTML = issues.map(s => `<div class="ismark" style="left:${s.t0 * pps}px;width:${Math.max((s.t1 - s.t0) * pps, 3)}px" title="${ISSUE_TXT[s.type]}"></div>`).join(""); }
+let clockLen = "";
+function renderPlayhead() { $("playhead").style.left = (t * pps) + "px"; $("clockNow").textContent = fmt(t);
+  const L = fmt(compiled.duration); if (L !== clockLen) { clockLen = L; $("lenBtn").textContent = L; } }
+new ResizeObserver(() => renderTimeline()).observe($("tl"));
+let drag = null;
+$("tl").addEventListener("pointerdown", (e) => {
+  if (e.target.classList.contains("kd")) { const f = show.formations.find(x => x.id === e.target.dataset.fid); if (selectedId !== f.id) select(f.id, false);
+    t = holdOf(f).t0 + parseFloat(e.target.dataset.kt) + 1e-4; playing = false; updatePlay(); refreshPlaceBar(true); return; }
+  const lb = e.target.closest(".lblk");
+  if (lb) { const L = lightById(lb.dataset.lid); selLight = L.id; tab = "lights"; playing = false; updatePlay(); renderInspector(); renderLightLane();
+    drag = { kind: e.target.dataset.lgrip ? "lres" : "lmove", L, x0: e.clientX, t00: L.t0, dur0: L.dur }; $("tl").setPointerCapture(e.pointerId); return; }
+  const blk = e.target.closest(".blk.hold"), tlr = $("tl").getBoundingClientRect();
+  if (blk) { const f = show.formations.find(x => x.id === blk.dataset.fid); select(f.id, false);
+    const hold = compiled.segs.find(g => g.kind === "hold" && g.fid === f.id);
+    drag = { kind: e.target.dataset.grip ? "hold" : "move", f, x0: e.clientX, start0: hold.t0, hold0: f.hold };
+    blk.setPointerCapture(e.pointerId); blk.style.cursor = "grabbing"; return; }
+  drag = { kind: "scrub" }; $("tl").setPointerCapture(e.pointerId); t = Math.max(0, Math.min(compiled.duration, (e.clientX - tlr.left) / pps)); playing = false; updatePlay();
+});
+$("tl").addEventListener("pointermove", (e) => {
+  if (!drag) return; const tlr = $("tl").getBoundingClientRect();
+  if (drag.kind === "scrub") { t = Math.max(0, Math.min(compiled.duration, (e.clientX - tlr.left) / pps)); return; }
+  const dx = (e.clientX - drag.x0) / pps;
+  if (drag.kind === "lmove" || drag.kind === "lres") { const L = drag.L, r1 = (x) => Math.round(x * 10) / 10;
+    if (drag.kind === "lmove") L.t0 = Math.max(0, Math.min(compiled.duration - 0.1, r1(drag.t00 + dx))); else L.dur = Math.max(0.1, r1(drag.dur0 + dx));
+    renderLightLane(); const a = $("lf_t0"), b = $("lf_dur"); if (a) a.value = L.t0; if (b) b.value = L.dur; t = drag.kind === "lmove" ? L.t0 : L.t0 + L.dur; return; }
+  if (drag.kind === "move") drag.f.start = Math.max(0, Math.round((drag.start0 + dx) * 10) / 10);
+  else drag.f.hold = Math.max(0.2, Math.round((drag.hold0 + dx) * 10) / 10);
+  compiled = compile(show); renderTimeline(); renderStory(); refreshLight();
+});
+const endDrag = () => { if (drag && (drag.kind === "lmove" || drag.kind === "lres")) { commit(); renderLights(); renderLightLane(); }
+  else if (drag && drag.kind !== "scrub") { commit(); rebuildAll(); } drag = null; };
+$("tl").addEventListener("pointerup", endDrag); $("tl").addEventListener("pointercancel", endDrag);
+
+// ---------- Transport ----------
+function updatePlay() { $("playBtn").textContent = playing ? "Pause" : "Play"; }
+$("playBtn").onclick = () => { if (!playing && t >= compiled.duration - 0.01) t = 0; playing = !playing; updatePlay(); };
+$("toStart").onclick = () => { t = 0; };
+const holdStarts = () => compiled.segs.filter(g => g.kind === "hold").map(g => g.t0);
+$("prevF").onclick = () => { const s = holdStarts().filter(x => x < t - 0.05); t = s.length ? s[s.length - 1] : 0; };
+$("nextF").onclick = () => { const s = holdStarts().find(x => x > t + 0.05); t = s !== undefined ? s : compiled.duration; };
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, select, textarea")) return;
+  if (e.code === "Space") { e.preventDefault(); $("playBtn").click(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+  if (e.key === "Escape") { $("picker").hidden = true; edit.free.clear(); if (edit.sel.size) { edit.sel.clear(); refreshPlaceBar(true); } }
+  if (edit.sel.size && sel() && e.key.startsWith("Arrow")) { e.preventDefault(); const s = e.altKey ? 0.01 : 0.1;
+    if (e.key === "ArrowLeft") nudge(-s, 0, 0); if (e.key === "ArrowRight") nudge(s, 0, 0);
+    if (e.key === "ArrowUp") e.shiftKey ? nudge(0, s, 0) : nudge(0, 0, s); if (e.key === "ArrowDown") e.shiftKey ? nudge(0, -s, 0) : nudge(0, 0, -s); }
+});
+$("undoBtn").onclick = undo;
+document.querySelectorAll("[data-cam]").forEach(b => b.onclick = () => setCam(b.dataset.cam));
+$("numsBtn").setAttribute("aria-pressed", showNums);
+$("numsBtn").onclick = () => { showNums = !showNums; try { localStorage.setItem("fs-nums", showNums ? "1" : "0"); } catch (e) {}
+  $("numsBtn").setAttribute("aria-pressed", showNums); drones.forEach(d => d.label.visible = showNums); buildArea(); };
+
+// ---------- Settings ----------
+const SETTINGS = [
+  ["droneCount", "Drones in the show", "", 1, 1, 200], ["areaX", "Flight area width (X)", "m", .5, 1, 50], ["areaY", "Flight area depth (Y)", "m", .5, 1, 50], ["areaZ", "Flight area height (Z)", "m", .5, 1, 30],
+  ["minSpacing", "Minimum distance between drones", "m", .05, .1, 5], ["maxSpeed", "Maximum speed", "m/s", .1, .1, 10], ["maxAccel", "Maximum acceleration", "m/s²", .1, .1, 10],
+  ["takeoffSpacing", "Spacing of takeoff spots", "m", .05, .2, 5], ["takeoffAlt", "Takeoff height", "m", .1, .3, 5]];
+$("settingsBtn").onclick = () => {
+  const st = show.settings;
+  $("modalRoot").innerHTML = `<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="stTitle">
+    <div class="panel-head"><h2 id="stTitle">Show settings</h2><button class="btn small ghost" id="stX" aria-label="Close">✕</button></div>
+    <div class="form">${SETTINGS.map(([k, l, u, s, mn, mx]) => `<div class="field"><label for="st_${k}">${l}</label><div class="unit"><input class="inp num" id="st_${k}" type="number" step="${s}" min="${mn}" max="${mx}" value="${st[k]}">${u ? `<i>${u}</i>` : ""}</div></div>`).join("")}
+    <p class="note info"><span class="dot"></span><span>The audience stands on the −Y side. X runs left to right, Z is height. Takeoff spots form a grid in the middle of the floor.</span></p></div>
+    <footer><button class="btn" id="stCancel">Cancel</button><button class="btn primary" id="stSave">Apply</button></footer></div></div>`;
+  const close = () => { $("modalRoot").innerHTML = ""; };
+  $("stX").onclick = $("stCancel").onclick = close; $("scrim").onclick = (e) => { if (e.target.id === "scrim") close(); };
+  $("stSave").onclick = () => {
+    for (const [k, , , , mn, mx] of SETTINGS) { let v = parseFloat($("st_" + k).value); if (!isFinite(v)) continue; v = Math.min(mx, Math.max(mn, v)); st[k] = k === "droneCount" ? Math.round(v) : v; }
+    compile(show, { fit: "push", from: 0 }); commit(); close(); rebuildAll(); setCam("front"); };
+};
+
+// ---------- File: backups, opening shows, account sync ----------
+let downloadsApi = null;
+const plainDownloads = { async save({ filename, data }) { // ordinary browser download, used outside claude.ai
+  const blob = data instanceof Blob ? data : new Blob([data]), url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); return { status: "saved" }; } };
+const inClaude = () => { try { return window.self !== window.top || !!(window.claude && window.claude.use); } catch (e) { return true; } };
+if (!inClaude()) downloadsApi = plainDownloads;
+function replaceShow(next, msg) {
+  history.push(JSON.stringify(show)); if (history.length > 80) history.shift(); future = [];
+  edit.sel.clear(); show = next; lastCommitted = JSON.stringify(show); selectedId = show.formations[0]?.id || null; t = 0;
+  buildDrones(); rebuildAll(); setCam("front"); saveShow(); if (msg) toast(msg, "Undo", undo);
+}
+const slug = (x) => (x || "show").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "show";
+$("fileBtn").onclick = () => {
+  const st = saver.state, where = st === "saved" ? "Every change is saved to your claude.ai account as you work, and also kept in this browser." :
+    st === "saving" ? "Saving your latest change to your claude.ai account…" : st === "error" ? "Your account couldn't be reached, so changes are kept in this browser for now. Saving to your account retries automatically." :
+    "Every change is saved in this browser as you work.";
+  $("modalRoot").innerHTML = `<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="flTitle">
+    <div class="panel-head"><h2 id="flTitle">File</h2><button class="btn small ghost" id="flX" aria-label="Close">✕</button></div>
+    <div class="form">
+      <p class="note ${st === "error" ? "bad" : "ok"}"><span class="dot"></span><span>${where}</span></p>
+      <div class="field"><span class="lbl">Backup copy</span><p class="note info" style="margin:0"><span class="dot"></span><span>A .json file with the whole show. Keep it with your project files or open it on another computer.</span></p>
+        ${downloadsApi ? `<button class="btn" id="flSave" style="align-self:flex-start">Download backup</button>` : `<p class="note info" style="margin:0"><span class="dot"></span><span>Downloads aren't available in this view.</span></p>`}</div>
+      <div class="field"><label for="flOpen">Open a show file</label><input class="inp" type="file" id="flOpen" accept=".json,application/json"></div>
+      <div class="field"><span class="lbl">New show</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" id="flEmpty">Start an empty show</button><button class="btn" id="flNew">Start from the sample show</button></div></div>
+      <p class="note info" id="flMsg" hidden><span class="dot"></span><span></span></p>
+    </div></div></div>`;
+  const close = () => { $("modalRoot").innerHTML = ""; }, msg = (m, bad) => { const el = $("flMsg"); el.hidden = false; el.className = "note " + (bad ? "bad" : "ok"); el.lastElementChild.textContent = m; };
+  $("flX").onclick = close; $("scrim").onclick = (e) => { if (e.target.id === "scrim") close(); };
+  if ($("flSave")) $("flSave").onclick = async () => {
+    try { await downloadsApi.save({ filename: slug(show.name) + ".show.json", data: JSON.stringify(show, null, 2) }); msg("Backup saved."); }
+    catch (e) { msg(e && e.code === "declined" ? "Download cancelled." : "The backup couldn't be downloaded here. Try again in a moment.", e && e.code !== "declined"); } };
+  $("flOpen").onchange = () => { const file = $("flOpen").files[0]; if (!file) return; const r = new FileReader();
+    r.onload = () => { try { const s = JSON.parse(r.result); if (!validShow(s)) throw 0; close(); replaceShow(s, `Opened ${file.name}`); }
+      catch (e) { msg("That file isn't a Formation Studio show. Choose a .show.json file saved from this app.", true); } };
+    r.readAsText(file); };
+  $("flNew").onclick = () => { close(); replaceShow(defaultShow(), "Started from the sample show"); };
+  $("flEmpty").onclick = () => { close(); const s2 = defaultShow(); s2.name = "New show"; s2.formations = []; s2.settings.length = 60;
+    replaceShow(s2, "Started an empty one-minute show. Scrub to any moment and drag drones to place them."); };
+};
+(async () => { // connect autosave to the viewer's account, and pick up a newer copy saved from another device
+  let c = window.claude; for (let i = 0; i < 30 && !(c && c.use); i++) { await new Promise(r => setTimeout(r, 100)); c = window.claude; }
+  if (!c || !c.use) { if (!downloadsApi) downloadsApi = plainDownloads; setSaveUI("local"); return; }
+  c.use("downloads").then(d => { downloadsApi = d || downloadsApi; }).catch(() => {});
+  try {
+    const [db, user] = await Promise.all([c.use("db"), c.use("user")]);
+    const id = user ? await user.id() : null; if (!db || !id) { setSaveUI("local"); return; }
+    const ref = db.collection("data/users/" + id).doc("show"), snap = await ref.get(), d = snap.exists ? snap.data() : null;
+    saver.ref = ref;
+    if (d && validShow(d.show) && (d.savedAt || 0) > Math.max(saver.loadedAt, saver.savedAt)) {
+      show = JSON.parse(JSON.stringify(d.show)); lastCommitted = JSON.stringify(show); history = []; future = []; saver.lastCloud = lastCommitted;
+      selectedId = show.formations[0]?.id || null; t = 0; buildDrones(); rebuildAll(); setCam("front"); writeLocal(); setSaveUI("saved");
+      toast("Loaded your latest saved show");
+    } else { if (d && d.show) saver.lastCloud = JSON.stringify(d.show); pushCloud(); }
+  } catch (e) { setSaveUI("local"); }
+})();
+
+// ---------- Export ----------
+const pad2 = (n) => String(n).padStart(2, "0");
+let lastExport = null;
+async function runExport(onProgress) {
+  const c = compile(show), N = c.N, S = sampleShow(c, show.lights), json = JSON.stringify(show);
+  const meta = { name: show.name, showId: crc32(new TextEncoder().encode(json)), duration: c.duration, drones: N, pads: c.home.map(p => [p[0], p[1]]) };
+  const rows = [];
+  for (let i = 0; i < N; i++) {
+    const fitted = fitDrone(c, S, i), ev = ledEvents(S, i), file = buildDroneFile(meta, i + 1, fitted, ev), back = parseDroneBin(file.bin);
+    let err = 0; for (let k = 0; k <= S.K; k += 2) { const q = evalPieces(back.pieces, k * S.dt), p = S.pos[k][i]; err = Math.max(err, d3(p, q)); }
+    const first = evalPieces(back.pieces, 0), padErr = Math.hypot(first[0] - meta.pads[i][0], first[1] - meta.pads[i][1], first[2]);
+    const ok = back.magic === "DSHW" && back.crcOk && back.drone === i + 1 && back.pieces.length === fitted.pieces.length && back.leds.length === ev.length;
+    rows.push({ drone: i + 1, pad: meta.pads[i], pieces: fitted.pieces.length, leds: ev.length, err, padErr, ok, ...file });
+    onProgress && onProgress((i + 1) / N); await new Promise(r => setTimeout(r, 0));
+  }
+  const manifest = { format_version: EXPORT.version, show_name: show.name, show_id: hex32(meta.showId), exported_at: new Date().toISOString(), duration_s: +c.duration.toFixed(3), drone_count: N,
+    coordinates: "metres; x = audience left to right, y = away from audience, z = up; origin = centre of flight-area floor",
+    limits: { ...show.settings }, safety_problems: issues.length,
+    drones: rows.map(r => ({ drone: r.drone, bin: `drone_${pad2(r.drone)}.bin`, txt: `drone_${pad2(r.drone)}.txt`, crc32: hex32(r.crc), pieces: r.pieces, led_events: r.leds, takeoff_pad_m: r.pad.map(v => +v.toFixed(3)), max_fit_error_m: +r.err.toFixed(4) })) };
+  const layout = "drone,pad_x_m,pad_y_m\n" + rows.map(r => `${r.drone},${r.pad[0].toFixed(3)},${r.pad[1].toFixed(3)}`).join("\n") + "\n";
+  return lastExport = { meta, rows, manifest, layout, json };
+}
+function zipExport(x) {
+  const files = [];
+  for (const r of x.rows) { files.push({ name: `drone_${pad2(r.drone)}.bin`, data: r.bin }, { name: `drone_${pad2(r.drone)}.txt`, data: r.txt }); }
+  files.push({ name: "manifest.json", data: JSON.stringify(x.manifest, null, 2) }, { name: "takeoff_layout.csv", data: x.layout }, { name: "FORMAT.md", data: FORMAT_SPEC }, { name: "show.json", data: JSON.stringify(show, null, 2) });
+  return makeZip(files);
+}
+const mm = (m) => m * 1000 < 0.1 ? "< 0.1 mm" : (m * 1000).toFixed(1) + " mm";
+const kb = (n) => n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB";
+$("exportBtn").onclick = async () => {
+  const unsafe = issues.length;
+  $("modalRoot").innerHTML = `<div class="scrim" id="scrim"><div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="exTitle">
+    <div class="panel-head"><h2 id="exTitle">Export drone files</h2><button class="btn small ghost" id="exX" aria-label="Close">✕</button></div>
+    <div class="form" id="exBody" style="padding-bottom:4px">
+      ${unsafe ? `<p class="note bad"><span class="dot"></span><span>This show has ${unsafe} safety problem${unsafe > 1 ? "s" : ""}. Fix them before flying real drones. You can still export to test the files. <button class="btn small" id="exSafety">Show problems</button></span></p>` : `<p class="note ok"><span class="dot"></span><span>The safety check passes.</span></p>`}
+      <p class="note info"><span class="dot"></span><span>Fitting each drone's flight to polynomial pieces and checking every file…</span></p>
+      <div class="bar"><span id="exBar"></span></div>
+    </div><footer class="exfoot" id="exFoot"><button class="btn" id="exCancel">Close</button></footer></div></div>`;
+  const close = () => { $("modalRoot").innerHTML = ""; };
+  $("exX").onclick = $("exCancel").onclick = close; $("scrim").onclick = (e) => { if (e.target.id === "scrim") close(); };
+  if ($("exSafety")) $("exSafety").onclick = () => { close(); showSafety(); };
+  let x; try { x = await runExport(f => { const b = $("exBar"); if (b) b.style.width = Math.round(f * 100) + "%"; }); }
+  catch (e) { const B = $("exBody"); if (B) B.innerHTML = `<p class="note bad"><span class="dot"></span><span>The export couldn't be completed (${esc(e && e.message || e)}). Check the show for problems and try again.</span></p>`; return; }
+  const B = $("exBody"); if (!B) return;
+  const bad = x.rows.filter(r => !r.ok), worst = Math.max(...x.rows.map(r => r.err)), totalBin = x.rows.reduce((a, r) => a + r.bin.length, 0);
+  B.innerHTML = `${unsafe ? `<p class="note bad"><span class="dot"></span><span>This show has ${unsafe} safety problem${unsafe > 1 ? "s" : ""}. Fix them before flying real drones.</span></p>` : `<p class="note ok"><span class="dot"></span><span>The safety check passes.</span></p>`}
+    <p class="note ${bad.length ? "bad" : "ok"}"><span class="dot"></span><span>${bad.length ? `${bad.length} file${bad.length > 1 ? "s" : ""} failed the read-back check.` : `Every .bin was read back and checked: header, size and CRC-32 are correct, and the polynomials follow the designed path within <b class="num">${mm(worst)}</b>.`}</span></p>
+    <dl class="exmeta num"><dt>Show ID</dt><dd>${hex32(x.meta.showId)}</dd><dt>Length</dt><dd>${fmt(x.meta.duration)}</dd><dt>Drones</dt><dd>${x.meta.drones}</dd><dt>All .bin files</dt><dd>${kb(totalBin)}</dd></dl>
+    <div class="extable"><table><thead><tr><th>Drone</th><th>Takeoff pad (x, y)</th><th>Pieces</th><th>Light events</th><th>Path error</th><th>.bin</th><th></th></tr></thead><tbody>
+      ${x.rows.map(r => `<tr class="${r.ok ? "" : "bad"}"><td><b>${r.drone}</b></td><td>${r.pad[0].toFixed(2)}, ${r.pad[1].toFixed(2)} m</td><td>${r.pieces}</td><td>${r.leds}</td><td>${mm(r.err)}</td><td>${kb(r.bin.length)}</td>
+        <td><button class="btn small ghost" data-txt="${r.drone}">.txt</button></td></tr>`).join("")}</tbody></table></div>
+    <p class="note info"><span class="dot"></span><span>The .zip holds drone_01.bin to drone_${pad2(x.meta.drones)}.bin with matching .txt copies, plus manifest.json, takeoff_layout.csv, FORMAT.md (the byte layout for your ESP32 code) and a backup of the show. Single .bin files can only be downloaded inside the .zip in this view.</span></p>
+    <p class="note bad" id="exMsg" hidden><span class="dot"></span><span></span></p>`;
+  $("exFoot").innerHTML = `<button class="btn ghost" id="exClose" style="margin-right:auto">Close</button><button class="btn" id="exSpec">Download FORMAT.md</button><button class="btn primary" id="exZip">Download all (.zip)</button>`;
+  $("exClose").onclick = close;
+  const msg = (m, ok) => { const el = $("exMsg"); el.hidden = false; el.className = "note " + (ok ? "ok" : "bad"); el.lastElementChild.textContent = m; };
+  const save = async (filename, data) => { if (!downloadsApi) return msg("Downloads aren't available in this view.");
+    try { await downloadsApi.save({ filename, data }); msg(`Saved ${filename}.`, true); }
+    catch (e) { msg(e && e.code === "declined" ? "Download cancelled." : e && e.code === "rate_limited" ? "Another download is still waiting for you to confirm it." : "The file couldn't be downloaded here. Try again in a moment.", e && e.code === "declined"); } };
+  $("exZip").onclick = () => save(`${slug(show.name)}-drone-files.zip`, new Blob([zipExport(x)]));
+  $("exSpec").onclick = () => save("FORMAT.md", FORMAT_SPEC);
+  B.querySelectorAll("[data-txt]").forEach(b => b.onclick = () => { const r = x.rows[+b.dataset.txt - 1]; save(`drone_${pad2(r.drone)}.txt`, r.txt); });
+};
+
+// ---------- Show length ----------
+function parseTime(v) { v = String(v).trim(); if (!v) return NaN; if (v.includes(":")) { const [m, s2] = v.split(":"); return parseFloat(m) * 60 + parseFloat(s2 || 0); } return parseFloat(v); }
+function stretchShow(L) { // scale every formation's timing, holds, keyframes and motion so the show lasts L seconds
+  const c = compiled, tk = c.segs[0].t1, ret = c.segs[c.segs.length - 2], land = c.segs[c.segs.length - 1], hv = c.segs.find(g => g.kind === "hover");
+  const tail = (ret.t1 - ret.t0) + (land.t1 - land.t0), content = c.duration - tk - tail; // extra time stretches too, so moments keep their place in the show
+  if (content < 0.5) { show.settings.length = L; return; }
+  const k = Math.max(0.05, (L - tk - tail) / content), r1 = (x) => Math.round(x * 10) / 10;
+  (show.lights || []).forEach(L => { if (L.t0 >= tk) L.t0 = r1(tk + (L.t0 - tk) * k); L.dur = Math.max(0.1, r1(L.dur * k)); });
+  show.formations.forEach(f => { const h = holdOf(f); f.start = r1(tk + ((h ? h.t0 : f.start) - tk) * k); f.hold = Math.max(0.1, r1(f.hold * k));
+    (f.keys || []).forEach(q => q.t = Math.max(0.1, Math.min(f.hold, r1(q.t * k)))); });
+  show.settings.length = L;
+}
+$("lenBtn").onclick = () => {
+  const hv = compiled.segs.find(g => g.kind === "hover"), extra = hv ? hv.t1 - hv.t0 : 0, shortest = compiled.duration - extra;
+  $("modalRoot").innerHTML = `<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="lnTitle">
+    <div class="panel-head"><h2 id="lnTitle">Show length</h2><button class="btn small ghost" id="lnX" aria-label="Close">✕</button></div>
+    <div class="form">
+      <div class="field"><label for="lnVal">Total length, takeoff to landing (minutes:seconds)</label><input class="inp num" id="lnVal" value="${fmt(compiled.duration)}"></div>
+      <div class="field"><span class="lbl">How to change it</span>
+        <label style="display:flex;gap:8px;align-items:flex-start"><input type="radio" name="lnMode" value="end" checked><span>Add or remove time at the end. Drones hover before they return, and you can drag them in that time to add new poses.</span></label>
+        <label style="display:flex;gap:8px;align-items:flex-start"><input type="radio" name="lnMode" value="stretch"><span>Stretch everything to fit. Formations, holds, keyframes and motion all take proportionally longer or shorter.</span></label></div>
+      <p class="note info"><span class="dot"></span><span>The formations need at least <b class="num">${fmt(shortest)}</b> as they are now${extra ? `; there is ${fmt(extra)} of extra time at the end` : ""}.</span></p>
+      <p class="note bad" id="lnMsg" hidden><span class="dot"></span><span></span></p>
+    </div>
+    <footer>${show.settings.length ? `<button class="btn ghost" id="lnReset" style="margin-right:auto">Remove extra time</button>` : ""}<button class="btn" id="lnCancel">Cancel</button><button class="btn primary" id="lnOk">Apply</button></footer></div></div>`;
+  const close = () => { $("modalRoot").innerHTML = ""; };
+  $("lnX").onclick = $("lnCancel").onclick = close; $("scrim").onclick = (e) => { if (e.target.id === "scrim") close(); };
+  if ($("lnReset")) $("lnReset").onclick = () => { show.settings.length = 0; commit(); close(); rebuildAll(); };
+  $("lnOk").onclick = () => {
+    const L = parseTime($("lnVal").value), mode = document.querySelector("input[name=lnMode]:checked").value, err = (m) => { const el = $("lnMsg"); el.hidden = false; el.lastElementChild.textContent = m; };
+    if (!isFinite(L) || L <= 0) return err("Enter a length like 2:30 or 150.");
+    if (L > 3600) return err("Keep the show under an hour.");
+    if (mode === "end") { if (L < shortest - 0.05) return err(`That's shorter than the formations need (${fmt(shortest)}). Choose "Stretch everything" or shorten some formations.`);
+      show.settings.length = L; }
+    else stretchShow(L);
+    commit(); close(); rebuildAll(); toast(`The show now lasts ${fmt(compiled.duration)}`, "Undo", undo);
+  };
+  $("lnVal").focus(); $("lnVal").select();
+};
+
+// ---------- Toast ----------
+let toastTimer = 0;
+function toast(msg, action, fn) {
+  let el = document.querySelector(".toast"); if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.appendChild(el); }
+  el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button class="btn small">${action}</button>` : ""}`;
+  if (action) el.querySelector("button").onclick = () => { fn(); el.remove(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), 4500);
+}
+
+// ---------- Glue ----------
+$("showName").value = show.name;
+$("showName").addEventListener("input", () => { show.name = $("showName").value; saveShow(); }); $("showName").addEventListener("change", commit);
+function refreshLight() { scheduleCheck(); }
+function rebuildAll() {
+  if (!Array.isArray(show.lights)) show.lights = [];
+  compiled = compile(show); $("showName").value = show.name;
+  if (drones.length !== compiled.N) buildDrones();
+  [...edit.sel].forEach(k => { if (k >= compiled.N) edit.sel.delete(k); });
+  buildArea(); buildGhost(); renderStory(); renderInspector(); renderTimeline(); scheduleCheck();
+  t = Math.min(t, compiled.duration);
+}
+function frameStats(P) {
+  let md = Infinity; for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) md = Math.min(md, d3(P[i], P[j]));
+  const Q = positionsAt(compiled, Math.max(0, t - 0.02)); let mv = 0; if (t > 0.02) for (let i = 0; i < P.length; i++) mv = Math.max(mv, d3(P[i], Q[i]) / 0.02);
+  return { md, mv };
+}
+let last = performance.now(), statTick = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (playing) { t += dt * parseFloat($("speed").value); if (t >= compiled.duration) { t = compiled.duration; playing = false; updatePlay(); } }
+  const P = positionsAt(compiled, t);
+  const hg = activeHold(), mine = hg && hg.fid === selectedId ? hg : null;
+  if (edit.drag && (mine || edit.drag.free)) for (const [k, p] of edit.drag.cur) { const di = edit.drag.droneOf.get(k); if (di !== undefined) P[di] = p; }
+  const bad = !playing && mine ? crowded(P, show.settings.minSpacing) : null, C = lightsAt(compiled, show.lights, t, P);
+  drones.forEach((d, i) => { const v = S2T(P[i]); d.core.position.copy(v); d.glow.position.copy(v);
+    const [r, g, b] = C[i], br = Math.max(r, g, b) / 255; // an unlit drone stays visible as a dark body
+    if (i === hoverIdx) d.core.material.color.set("#ffffff"); else d.core.material.color.setRGB(Math.max(r / 255, .17), Math.max(g / 255, .2), Math.max(b / 255, .26));
+    d.glow.material.color.setRGB(r / 255, g / 255, b / 255); d.glow.material.opacity = .9 * br; d.glow.scale.setScalar(i === hoverIdx ? .7 : .42);
+    const chosen = (mine && edit.sel.has(mine.map[i])) || (!hg && edit.free.has(i)), warn = bad && bad[i];
+    if (d.label.visible) { d.label.position.copy(v); d.label.position.y += 0.15; }
+    d.ring.visible = !!(chosen || warn); if (d.ring.visible) { d.ring.position.copy(v); d.ring.quaternion.copy(camera.quaternion); d.ring.material.color.set(chosen ? "#ffffff" : "#ff6b72"); } });
+  ghostGroup.children.forEach(m => { if (m.userData.billboard) m.quaternion.copy(camera.quaternion); });
+  if (hoverIdx >= 0) { const p = P[hoverIdx]; $("tip").innerHTML = `<b>Drone ${hoverIdx + 1}</b>${hg ? ` · spot ${hg.map[hoverIdx] + 1} of ${esc(hg.label)}` : ""} <span class="num">x ${p[0].toFixed(2)} · y ${p[1].toFixed(2)} · z ${p[2].toFixed(2)}</span>`; }
+  if (++statTick % 6 === 0) {
+    const s = frameStats(P), st = show.settings, seg = segAt(compiled, t);
+    $("hud").innerHTML = `<span>Now: <b>${esc(seg.kind === "hold" ? seg.label : seg.kind === "move" ? (seg.fid ? "Moving " + seg.label : "Returning") : seg.label)}</b></span>
+      <span class="${s.md < st.minSpacing - 1e-6 ? "bad" : ""}">Closest pair <b class="num">${isFinite(s.md) ? s.md.toFixed(2) : "–"} m</b></span>
+      <span class="${s.mv > st.maxSpeed * 1.03 ? "bad" : ""}">Fastest drone <b class="num">${s.mv.toFixed(2)} m/s</b></span>`;
+  }
+  refreshPlaceBar(false);
+  if (tab === "lights") { const o = $("addLight"), now = fmt(t); if (o && o.dataset.at !== now) { o.dataset.at = now; const pk = selectedDrones().length;
+    o.options[0].textContent = `+ Add light effect at ${now}${pk ? ` for ${pk} selected drone${pk > 1 ? "s" : ""}` : ""}…`; } }
+  renderPlayhead(); controls.update(); renderer.render(scene, camera); requestAnimationFrame(frame);
+}
+buildDrones(); rebuildAll(); resize(); setCam("front"); select(selectedId, false); t = 0; requestAnimationFrame(frame);
+</script>
